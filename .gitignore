@@ -1,12 +1,42 @@
-node_modules/
+# dependencies
+node_modules
+.pnpm-store
+
+# builds
+dist
+build
+.next
+out
+.turbo
+coverage
+playwright-report
+test-results
+
+# env
 .env
-.env.local
-.env.production
-dist/
-build/
-.next/
-.vscode/
-.DS_Store
+.env.*
+!.env.example
+
+# logs
+logs
+*.log
 npm-debug.log*
+pnpm-debug.log*
 yarn-debug.log*
-yarn-error.log*
+
+# database
+*.db
+*.sqlite
+*.sqlite3
+
+# system
+.DS_Store
+Thumbs.db
+
+# docker
+docker-data
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea

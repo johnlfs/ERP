@@ -1,0 +1,40 @@
+{
+  "name": "erp-retailflow-pro",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RetailFlow Pro - ERP/POS web para varejo com Next.js, NestJS, PostgreSQL e Mercado Pago.",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "format": "prettier --write .",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down"
+  },
+  "keywords": [
+    "erp",
+    "pos",
+    "retail",
+    "nextjs",
+    "react",
+    "nestjs",
+    "postgresql",
+    "mercado-pago"
+  ],
+  "author": "John L. F. Silveira",
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  }
+}
