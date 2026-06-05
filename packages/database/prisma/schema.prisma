@@ -1,0 +1,454 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  CASHIER
+}
+
+enum StoreUserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  SALE
+  SALE_CANCEL
+}
+
+enum CashRegisterStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  OPENING
+  SUPPLY
+  WITHDRAWAL
+  SALE
+  CLOSING
+}
+
+enum SaleStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
+enum ReceivableStatus {
+  OPEN
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum MercadoPagoEnvironment {
+  SANDBOX
+  PRODUCTION
+}
+
+enum MercadoPagoChargeStatus {
+  WAITING_PAYMENT
+  APPROVED
+  REJECTED
+  CANCELLED
+  REFUNDED
+  UNKNOWN
+}
+
+enum FiscalDocumentStatus {
+  PENDING
+  AUTHORIZED
+  REJECTED
+  CANCELLED
+}
+
+model User {
+  id           String      @id @default(uuid())
+  name         String
+  email        String      @unique
+  passwordHash String
+  isActive     Boolean     @default(true)
+
+  stores       StoreUser[]
+  sales        Sale[]      @relation("SaleOperator")
+  auditLogs    AuditLog[]
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@map("users")
+}
+
+model Store {
+  id          String      @id @default(uuid())
+  name        String
+  document    String?
+  tradeName   String?
+  isActive    Boolean     @default(true)
+
+  users       StoreUser[]
+  categories  Category[]
+  products    Product[]
+  customers   Customer[]
+  stockMoves  StockMovement[]
+  cashRegisters CashRegister[]
+  sales       Sale[]
+  receivables Receivable[]
+  mercadoPagoCredential MercadoPagoCredential?
+  mercadoPagoCharges MercadoPagoCharge[]
+  webhookEvents MercadoPagoWebhookEvent[]
+  fiscalDocuments FiscalDocumentMock[]
+  auditLogs   AuditLog[]
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("stores")
+}
+
+model StoreUser {
+  id        String          @id @default(uuid())
+  userId    String
+  storeId   String
+  role      UserRole
+  status    StoreUserStatus @default(ACTIVE)
+
+  user      User            @relation(fields: [userId], references: [id])
+  store     Store           @relation(fields: [storeId], references: [id])
+
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([userId, storeId])
+  @@map("store_users")
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  storeId   String
+  name      String
+  isActive  Boolean   @default(true)
+
+  store     Store     @relation(fields: [storeId], references: [id])
+  products  Product[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([storeId, name])
+  @@map("categories")
+}
+
+model Product {
+  id            String            @id @default(uuid())
+  storeId       String
+  categoryId    String?
+
+  internalCode  String
+  barcode       String?
+  name          String
+  description   String?
+  costPrice     Decimal           @db.Decimal(12, 2)
+  salePrice     Decimal           @db.Decimal(12, 2)
+  ncm           String?
+  unit          String            @default("UN")
+  status        ProductStatus     @default(ACTIVE)
+  minStock      Decimal           @default(0) @db.Decimal(12, 3)
+  currentStock  Decimal           @default(0) @db.Decimal(12, 3)
+
+  store         Store             @relation(fields: [storeId], references: [id])
+  category      Category?         @relation(fields: [categoryId], references: [id])
+  stockMoves    StockMovement[]
+  saleItems     SaleItem[]
+
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@unique([storeId, internalCode])
+  @@index([storeId, barcode])
+  @@index([storeId, name])
+  @@map("products")
+}
+
+model Customer {
+  id        String    @id @default(uuid())
+  storeId   String
+
+  name      String
+  document  String?
+  phone     String?
+  email     String?
+  address   String?
+
+  store     Store     @relation(fields: [storeId], references: [id])
+  sales     Sale[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([storeId, name])
+  @@index([storeId, document])
+  @@map("customers")
+}
+
+model StockMovement {
+  id          String            @id @default(uuid())
+  storeId     String
+  productId   String
+  type        StockMovementType
+  quantity    Decimal           @db.Decimal(12, 3)
+  previousQty Decimal           @db.Decimal(12, 3)
+  newQty      Decimal           @db.Decimal(12, 3)
+  reason      String?
+  saleId      String?
+
+  store       Store             @relation(fields: [storeId], references: [id])
+  product     Product           @relation(fields: [productId], references: [id])
+  sale        Sale?             @relation(fields: [saleId], references: [id])
+
+  createdAt   DateTime          @default(now())
+
+  @@index([storeId, productId])
+  @@index([storeId, createdAt])
+  @@map("stock_movements")
+}
+
+model CashRegister {
+  id             String              @id @default(uuid())
+  storeId         String
+  openedByUserId  String?
+  closedByUserId  String?
+
+  status          CashRegisterStatus @default(OPEN)
+  openingAmount   Decimal            @db.Decimal(12, 2)
+  closingAmount   Decimal?           @db.Decimal(12, 2)
+  expectedAmount  Decimal?           @db.Decimal(12, 2)
+  difference      Decimal?           @db.Decimal(12, 2)
+
+  openedAt        DateTime           @default(now())
+  closedAt        DateTime?
+
+  store           Store              @relation(fields: [storeId], references: [id])
+  movements       CashMovement[]
+  sales           Sale[]
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([storeId, status])
+  @@map("cash_registers")
+}
+
+model CashMovement {
+  id             String           @id @default(uuid())
+  cashRegisterId String
+  type           CashMovementType
+  amount         Decimal          @db.Decimal(12, 2)
+  description    String?
+
+  cashRegister   CashRegister    @relation(fields: [cashRegisterId], references: [id])
+
+  createdAt      DateTime        @default(now())
+
+  @@index([cashRegisterId, createdAt])
+  @@map("cash_movements")
+}
+
+model Sale {
+  id              String        @id @default(uuid())
+  storeId          String
+  customerId       String?
+  operatorUserId   String?
+  cashRegisterId   String?
+
+  status           SaleStatus   @default(DRAFT)
+  subtotal         Decimal      @db.Decimal(12, 2)
+  discountTotal    Decimal      @default(0) @db.Decimal(12, 2)
+  total            Decimal      @db.Decimal(12, 2)
+  cancelledReason  String?
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+
+  store            Store         @relation(fields: [storeId], references: [id])
+  customer         Customer?     @relation(fields: [customerId], references: [id])
+  operator         User?         @relation("SaleOperator", fields: [operatorUserId], references: [id])
+  cashRegister     CashRegister? @relation(fields: [cashRegisterId], references: [id])
+
+  items            SaleItem[]
+  stockMoves       StockMovement[]
+  receivables      Receivable[]
+  mercadoPagoCharges MercadoPagoCharge[]
+  fiscalDocument   FiscalDocumentMock?
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([storeId, status])
+  @@index([storeId, createdAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id            String   @id @default(uuid())
+  saleId        String
+  productId     String
+
+  productName   String
+  quantity      Decimal  @db.Decimal(12, 3)
+  unitPrice     Decimal  @db.Decimal(12, 2)
+  discount      Decimal  @default(0) @db.Decimal(12, 2)
+  total         Decimal  @db.Decimal(12, 2)
+
+  sale          Sale     @relation(fields: [saleId], references: [id])
+  product       Product  @relation(fields: [productId], references: [id])
+
+  createdAt     DateTime @default(now())
+
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+model Receivable {
+  id          String           @id @default(uuid())
+  storeId     String
+  saleId      String?
+
+  description String
+  amount      Decimal          @db.Decimal(12, 2)
+  dueDate     DateTime
+  paidAt      DateTime?
+  status      ReceivableStatus @default(OPEN)
+
+  store       Store            @relation(fields: [storeId], references: [id])
+  sale        Sale?            @relation(fields: [saleId], references: [id])
+  charges     MercadoPagoCharge[]
+
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([storeId, status])
+  @@index([storeId, dueDate])
+  @@map("receivables")
+}
+
+model MercadoPagoCredential {
+  id                    String                  @id @default(uuid())
+  storeId                String                  @unique
+
+  publicKey              String?
+  encryptedAccessToken   String
+  encryptedClientSecret  String?
+  clientId               String?
+  environment            MercadoPagoEnvironment @default(SANDBOX)
+  isActive               Boolean                 @default(false)
+
+  store                  Store                   @relation(fields: [storeId], references: [id])
+
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  @@map("mercado_pago_credentials")
+}
+
+model MercadoPagoCharge {
+  id                String                   @id @default(uuid())
+  storeId            String
+  saleId             String?
+  receivableId       String?
+
+  preferenceId       String?
+  paymentId          String?
+  externalReference  String                   @unique
+  checkoutUrl        String?
+  status             MercadoPagoChargeStatus  @default(WAITING_PAYMENT)
+  amount             Decimal                  @db.Decimal(12, 2)
+
+  store              Store                    @relation(fields: [storeId], references: [id])
+  sale               Sale?                    @relation(fields: [saleId], references: [id])
+  receivable         Receivable?              @relation(fields: [receivableId], references: [id])
+  events             MercadoPagoWebhookEvent[]
+
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  @@index([storeId, status])
+  @@index([storeId, createdAt])
+  @@map("mercado_pago_charges")
+}
+
+model MercadoPagoWebhookEvent {
+  id          String   @id @default(uuid())
+  storeId     String?
+  chargeId    String?
+
+  eventType   String?
+  payload     Json
+  headers     Json?
+  processed   Boolean  @default(false)
+  processedAt DateTime?
+  error       String?
+
+  store       Store?              @relation(fields: [storeId], references: [id])
+  charge      MercadoPagoCharge?  @relation(fields: [chargeId], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@index([storeId, createdAt])
+  @@index([processed])
+  @@map("mercado_pago_webhook_events")
+}
+
+model FiscalDocumentMock {
+  id              String               @id @default(uuid())
+  storeId          String
+  saleId           String               @unique
+
+  fakeKey          String               @unique
+  status           FiscalDocumentStatus @default(PENDING)
+  payload          Json?
+  rejectedReason   String?
+
+  store            Store                @relation(fields: [storeId], references: [id])
+  sale             Sale                 @relation(fields: [saleId], references: [id])
+
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([storeId, status])
+  @@map("fiscal_documents_mock")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  storeId     String?
+  userId      String?
+
+  action      String
+  entity      String
+  entityId    String?
+  metadata    Json?
+
+  store       Store?   @relation(fields: [storeId], references: [id])
+  user        User?    @relation(fields: [userId], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@index([storeId, createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
