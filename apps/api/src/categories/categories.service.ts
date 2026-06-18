@@ -2,6 +2,9 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
+import { CreateCategoryDto } from './dto/create-category.dto';
+import { UpdateCategoryStatusDto } from './dto/update-category-status.dto';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 
 type FindAllCategoriesParams = {
   storeId?: string;
@@ -15,6 +18,53 @@ export class CategoriesService {
     @Inject(DatabaseService)
     private readonly database: DatabaseService
   ) {}
+
+  private formatCategory(
+    category: Prisma.CategoryGetPayload<{
+      include: {
+        store: {
+          select: {
+            id: true;
+            name: true;
+            tradeName: true;
+          };
+        };
+        _count: {
+          select: {
+            products: true;
+          };
+        };
+      };
+    }>
+  ) {
+    return {
+      id: category.id,
+      storeId: category.storeId,
+      name: category.name,
+      isActive: category.isActive,
+      store: category.store,
+      totals: {
+        products: category._count.products
+      },
+      createdAt: category.createdAt,
+      updatedAt: category.updatedAt
+    };
+  }
+
+  private async ensureStoreExists(storeId: string) {
+    const store = await this.database.store.findUnique({
+      where: {
+        id: storeId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!store) {
+      throw new NotFoundException('Loja não encontrada');
+    }
+  }
 
   async findAll(params: FindAllCategoriesParams) {
     const search = params.search?.trim();
@@ -61,18 +111,7 @@ export class CategoriesService {
 
     return {
       total,
-      data: categories.map((category) => ({
-        id: category.id,
-        storeId: category.storeId,
-        name: category.name,
-        isActive: category.isActive,
-        store: category.store,
-        totals: {
-          products: category._count.products
-        },
-        createdAt: category.createdAt,
-        updatedAt: category.updatedAt
-      }))
+      data: categories.map((category) => this.formatCategory(category))
     };
   }
 
@@ -101,17 +140,91 @@ export class CategoriesService {
       throw new NotFoundException('Categoria não encontrada');
     }
 
-    return {
-      id: category.id,
-      storeId: category.storeId,
-      name: category.name,
-      isActive: category.isActive,
-      store: category.store,
-      totals: {
-        products: category._count.products
+    return this.formatCategory(category);
+  }
+
+  async create(input: CreateCategoryDto) {
+    await this.ensureStoreExists(input.storeId);
+
+    const category = await this.database.category.create({
+      data: {
+        storeId: input.storeId,
+        name: input.name
       },
-      createdAt: category.createdAt,
-      updatedAt: category.updatedAt
-    };
+      include: {
+        store: {
+          select: {
+            id: true,
+            name: true,
+            tradeName: true
+          }
+        },
+        _count: {
+          select: {
+            products: true
+          }
+        }
+      }
+    });
+
+    return this.formatCategory(category);
+  }
+
+  async update(id: string, input: UpdateCategoryDto) {
+    await this.findById(id);
+
+    const category = await this.database.category.update({
+      where: {
+        id
+      },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {})
+      },
+      include: {
+        store: {
+          select: {
+            id: true,
+            name: true,
+            tradeName: true
+          }
+        },
+        _count: {
+          select: {
+            products: true
+          }
+        }
+      }
+    });
+
+    return this.formatCategory(category);
+  }
+
+  async updateStatus(id: string, input: UpdateCategoryStatusDto) {
+    await this.findById(id);
+
+    const category = await this.database.category.update({
+      where: {
+        id
+      },
+      data: {
+        isActive: input.isActive
+      },
+      include: {
+        store: {
+          select: {
+            id: true,
+            name: true,
+            tradeName: true
+          }
+        },
+        _count: {
+          select: {
+            products: true
+          }
+        }
+      }
+    });
+
+    return this.formatCategory(category);
   }
 }
