@@ -115,6 +115,7 @@ request GET "/api/v1/stock-movements?page=1&pageSize=10" "401"
 request GET "/api/v1/sales?page=1&pageSize=10" "401"
 request GET "/api/v1/customers?page=1&pageSize=10" "401"
 request GET "/api/v1/suppliers?page=1&pageSize=10" "401"
+request GET "/api/v1/purchases?page=1&pageSize=10" "401"
 
 UNAUTHORIZED_CATEGORY_PAYLOAD="$(cat <<JSON
 {
@@ -197,6 +198,27 @@ JSON
 )"
 
 json_request POST "/api/v1/suppliers" "401" "$UNAUTHORIZED_SUPPLIER_PAYLOAD" >/dev/null
+
+UNAUTHORIZED_PURCHASE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "supplierId": "00000000-0000-0000-0000-000000009998",
+  "document": "SMOKE-PURCHASE-UNAUTHORIZED",
+  "items": [
+    {
+      "productId": "00000000-0000-0000-0000-000000009997",
+      "quantity": 1,
+      "unitCost": 10,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/purchases" "401" "$UNAUTHORIZED_PURCHASE_PAYLOAD" >/dev/null
+
 
 
 
@@ -390,6 +412,46 @@ JSON
 )"
 
 json_request PATCH "/api/v1/suppliers/${SUPPLIER_ID}/status" "200" "$SUPPLIER_INACTIVE_PAYLOAD" >/dev/null
+
+PURCHASE_WITH_INACTIVE_SUPPLIER_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "supplierId": "${SUPPLIER_ID}",
+  "document": "SMOKE-PURCHASE-INACTIVE-SUPPLIER-${SMOKE_SUFFIX}",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitCost": 10,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/purchases" "400" "$PURCHASE_WITH_INACTIVE_SUPPLIER_PAYLOAD" >/dev/null
+
+PURCHASE_WITH_UNKNOWN_SUPPLIER_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "supplierId": "00000000-0000-0000-0000-000000009998",
+  "document": "SMOKE-PURCHASE-UNKNOWN-SUPPLIER-${SMOKE_SUFFIX}",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitCost": 10,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/purchases" "404" "$PURCHASE_WITH_UNKNOWN_SUPPLIER_PAYLOAD" >/dev/null
 
 SUPPLIER_ACTIVE_PAYLOAD="$(cat <<JSON
 {
@@ -640,5 +702,106 @@ json_request POST "/api/v1/sales" "400" "$SALE_TOO_MUCH_PAYLOAD" >/dev/null
 request GET "/api/v1/products?page=abc" "400"
 request GET "/api/v1/products?storeId=abc" "400"
 request GET "/products" "404"
+
+PRODUCT_BEFORE_PURCHASE_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
+
+PURCHASE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "supplierId": "${SUPPLIER_ID}",
+  "document": "SMOKE-PURCHASE-${SMOKE_SUFFIX}",
+  "notes": "Compra criada pelo smoke test",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 4,
+      "unitCost": 11.25,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+PURCHASE_RESPONSE="$(json_request POST "/api/v1/purchases" "201" "$PURCHASE_PAYLOAD")"
+
+PURCHASE_ID="$(printf '%s' "$PURCHASE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+json_request GET "/api/v1/purchases?page=1&pageSize=10&search=SMOKE-PURCHASE" "200" "" >/dev/null
+json_request GET "/api/v1/purchases/${PURCHASE_ID}" "200" "" >/dev/null
+
+PRODUCT_AFTER_PURCHASE_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
+
+PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_RESPONSE="$PRODUCT_AFTER_PURCHASE_RESPONSE" PURCHASE_ID="$PURCHASE_ID" SUPPLIER_ID="$SUPPLIER_ID" PRODUCT_ID="$PRODUCT_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+
+purchase = json.loads(os.environ["PURCHASE_RESPONSE"])["data"]
+before_product = json.loads(os.environ["PRODUCT_BEFORE_PURCHASE_RESPONSE"])["data"]
+after_product = json.loads(os.environ["PRODUCT_AFTER_PURCHASE_RESPONSE"])["data"]
+
+purchase_id = os.environ["PURCHASE_ID"]
+supplier_id = os.environ["SUPPLIER_ID"]
+product_id = os.environ["PRODUCT_ID"]
+
+assert purchase["id"] == purchase_id, "ID da compra retornado não bate"
+assert purchase["supplierId"] == supplier_id, "supplierId da compra não bate"
+assert purchase["supplier"]["id"] == supplier_id, "supplier.id da compra não bate"
+assert purchase["status"] == "RECEIVED", "Compra deveria ser RECEIVED"
+assert len(purchase["items"]) == 1, "Compra deveria ter 1 item"
+
+item = purchase["items"][0]
+assert item["productId"] == product_id, "productId do item da compra não bate"
+assert item["quantity"] == 4, "Quantidade do item da compra deveria ser 4"
+assert item["unitCost"] == 11.25, "unitCost do item da compra deveria ser 11.25"
+
+movements = purchase["stockMovements"]
+assert len(movements) == 1, "Compra deveria gerar 1 movimentação de estoque"
+
+movement = movements[0]
+assert movement["purchaseId"] == purchase_id, "Movimento deveria estar vinculado à compra"
+assert movement["saleId"] is None, "Movimento de compra não deveria ter saleId"
+assert movement["type"] == "IN", "Movimento de compra deveria ser IN"
+assert movement["productId"] == product_id, "productId do movimento da compra não bate"
+assert movement["quantity"] == 4, "Quantidade do movimento deveria ser 4"
+
+from decimal import Decimal
+
+before_stock = Decimal(str(before_product["currentStock"]))
+after_stock = Decimal(str(after_product["currentStock"]))
+
+expected_after_stock = before_stock + Decimal("4")
+assert after_stock == expected_after_stock, (
+    f"Estoque após compra deveria ser {expected_after_stock}, veio {after_stock}"
+)
+PYVALIDATION
+
+PURCHASE_WITH_DUPLICATED_PRODUCTS_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "supplierId": "${SUPPLIER_ID}",
+  "document": "SMOKE-PURCHASE-DUPLICATED-${SMOKE_SUFFIX}",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitCost": 10,
+      "discount": 0
+    },
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitCost": 10,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/purchases" "400" "$PURCHASE_WITH_DUPLICATED_PRODUCTS_PAYLOAD" >/dev/null
+
 
 echo "Smoke test concluído com sucesso."

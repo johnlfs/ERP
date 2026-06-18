@@ -56,6 +56,30 @@ async function main() {
     ]
   };
 
+  const purchaseWhere = {
+    OR: [
+      {
+        document: {
+          startsWith: 'SMOKE-PURCHASE-'
+        }
+      },
+      {
+        items: {
+          some: {
+            product: {
+              is: productWhere
+            }
+          }
+        }
+      },
+      {
+        supplier: {
+          is: supplierWhere
+        }
+      }
+    ]
+  };
+
   const saleWhere = {
     OR: [
       {
@@ -92,6 +116,27 @@ async function main() {
 
   const deletedStockMovements = await prisma.stockMovement.deleteMany({
     where: stockMovementWhere
+  });
+
+  const deletedPurchaseItems = await prisma.purchaseItem.deleteMany({
+    where: {
+      OR: [
+        {
+          product: {
+            is: productWhere
+          }
+        },
+        {
+          purchase: {
+            is: purchaseWhere
+          }
+        }
+      ]
+    }
+  });
+
+  const deletedPurchases = await prisma.purchase.deleteMany({
+    where: purchaseWhere
   });
 
   const deletedSaleItems = await prisma.saleItem.deleteMany({
@@ -136,6 +181,8 @@ async function main() {
       {
         status: 'ok',
         deletedStockMovements: deletedStockMovements.count,
+        deletedPurchaseItems: deletedPurchaseItems.count,
+        deletedPurchases: deletedPurchases.count,
         deletedSaleItems: deletedSaleItems.count,
         deletedSales: deletedSales.count,
         deletedSuppliers: deletedSuppliers.count,
