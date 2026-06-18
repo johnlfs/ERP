@@ -29,6 +29,19 @@ enum StockMovementType {
   ADJUSTMENT
 }
 
+enum SaleStatus {
+  COMPLETED
+  CANCELED
+}
+
+enum PaymentMethod {
+  CASH
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  OTHER
+}
+
 model User {
   id           String  @id @default(uuid())
   name         String
@@ -41,6 +54,7 @@ model User {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
+  sales          Sale[]
 
   @@map("users")
 }
@@ -59,6 +73,7 @@ model Store {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
+  sales          Sale[]
 
   @@map("stores")
 }
@@ -119,6 +134,7 @@ model Product {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
+  saleItems      SaleItem[]
 
   @@unique([storeId, internalCode])
   @@index([storeId, barcode])
@@ -131,6 +147,7 @@ model StockMovement {
   storeId     String
   productId   String
   userId      String
+  saleId      String?
   type        StockMovementType
   quantity    Decimal           @db.Decimal(12, 3)
   beforeStock Decimal           @db.Decimal(12, 3)
@@ -141,11 +158,59 @@ model StockMovement {
   store   Store   @relation(fields: [storeId], references: [id])
   product Product @relation(fields: [productId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
+  sale    Sale?   @relation(fields: [saleId], references: [id])
 
   createdAt DateTime @default(now())
 
   @@index([storeId, createdAt])
   @@index([productId, createdAt])
   @@index([userId, createdAt])
+  @@index([saleId])
   @@map("stock_movements")
+}
+
+model Sale {
+  id            String        @id @default(uuid())
+  storeId       String
+  userId        String
+  status        SaleStatus    @default(COMPLETED)
+  paymentMethod PaymentMethod
+  subtotal      Decimal       @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(12, 2)
+  total         Decimal       @db.Decimal(12, 2)
+  document      String?
+  notes         String?
+
+  store Store @relation(fields: [storeId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  items          SaleItem[]
+  stockMovements StockMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, createdAt])
+  @@index([userId, createdAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String @id @default(uuid())
+  saleId    String
+  productId String
+
+  quantity  Decimal @db.Decimal(12, 3)
+  unitPrice Decimal @db.Decimal(12, 2)
+  discount  Decimal @default(0) @db.Decimal(12, 2)
+  total     Decimal @db.Decimal(12, 2)
+
+  sale    Sale    @relation(fields: [saleId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
 }

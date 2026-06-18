@@ -112,6 +112,7 @@ request GET "/api/v1/stores?page=1&pageSize=10" "200"
 request GET "/api/v1/categories?page=1&pageSize=10" "200"
 request GET "/api/v1/products?page=1&pageSize=10&search=produto" "200"
 request GET "/api/v1/stock-movements?page=1&pageSize=10" "401"
+request GET "/api/v1/sales?page=1&pageSize=10" "401"
 
 UNAUTHORIZED_CATEGORY_PAYLOAD="$(cat <<JSON
 {
@@ -277,6 +278,52 @@ JSON
 json_request POST "/api/v1/stock-movements" "400" "$STOCK_OUT_TOO_MUCH_PAYLOAD" >/dev/null
 
 json_request GET "/api/v1/stock-movements?page=1&pageSize=10" "200" "" >/dev/null
+
+SALE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "paymentMethod": "PIX",
+  "document": "SMOKE-SALE-${SMOKE_SUFFIX}",
+  "notes": "Venda criada pelo smoke test",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 2,
+      "unitPrice": 24.9,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+SALE_RESPONSE="$(json_request POST "/api/v1/sales" "201" "$SALE_PAYLOAD")"
+
+SALE_ID="$(printf '%s' "$SALE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+json_request GET "/api/v1/sales?page=1&pageSize=10" "200" "" >/dev/null
+json_request GET "/api/v1/sales/${SALE_ID}" "200" "" >/dev/null
+
+SALE_TOO_MUCH_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "paymentMethod": "PIX",
+  "document": "SMOKE-SALE-TOO-MUCH-${SMOKE_SUFFIX}",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 999999,
+      "unitPrice": 24.9,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/sales" "400" "$SALE_TOO_MUCH_PAYLOAD" >/dev/null
 
 request GET "/api/v1/products?page=abc" "400"
 request GET "/api/v1/products?storeId=abc" "400"
