@@ -46,6 +46,7 @@ type FindAllStockMovementsParams = {
   storeId?: string;
   productId?: string;
   saleId?: string;
+  purchaseId?: string;
   type?: StockMovementType;
   pagination: ParsedPagination;
   user: AuthenticatedUser;
@@ -69,6 +70,7 @@ export class StockMovementsService {
       productId: stockMovement.productId,
       userId: stockMovement.userId,
       saleId: stockMovement.saleId,
+      purchaseId: stockMovement.purchaseId,
       type: stockMovement.type,
       quantity: this.decimalToNumber(stockMovement.quantity),
       beforeStock: this.decimalToNumber(stockMovement.beforeStock),
@@ -122,6 +124,7 @@ export class StockMovementsService {
           },
       ...(params.productId ? { productId: params.productId } : {}),
       ...(params.saleId ? { saleId: params.saleId } : {}),
+      ...(params.purchaseId ? { purchaseId: params.purchaseId } : {}),
       ...(params.type ? { type: params.type } : {})
     };
 

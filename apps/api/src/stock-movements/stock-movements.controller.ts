@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Inject,
-  Post,
-  Query,
-  UseGuards
-} from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
@@ -46,6 +38,7 @@ export class StockMovementsController {
       storeId: query.storeId,
       productId: query.productId,
       saleId: query.saleId,
+      purchaseId: query.purchaseId,
       type: query.type,
       pagination,
       user
@@ -57,6 +50,7 @@ export class StockMovementsController {
         storeId: query.storeId ?? null,
         productId: query.productId ?? null,
         saleId: query.saleId ?? null,
+        purchaseId: query.purchaseId ?? null,
         type: query.type ?? null
       })
     );

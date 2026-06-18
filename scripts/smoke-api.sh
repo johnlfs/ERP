@@ -486,6 +486,26 @@ json_request PATCH "/api/v1/products/${PRODUCT_ID}/status" "200" '{
   "status": "INACTIVE"
 }' >/dev/null
 
+PURCHASE_WITH_INACTIVE_PRODUCT_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "supplierId": "${SUPPLIER_ID}",
+  "document": "SMOKE-PURCHASE-INACTIVE-PRODUCT-${SMOKE_SUFFIX}",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitCost": 10,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/purchases" "400" "$PURCHASE_WITH_INACTIVE_PRODUCT_PAYLOAD" >/dev/null
+
 json_request PATCH "/api/v1/products/${PRODUCT_ID}/status" "200" '{
   "status": "ACTIVE"
 }' >/dev/null
@@ -731,13 +751,17 @@ PURCHASE_ID="$(printf '%s' "$PURCHASE_RESPONSE" | python3 -c 'import sys,json; p
 json_request GET "/api/v1/purchases?page=1&pageSize=10&search=SMOKE-PURCHASE" "200" "" >/dev/null
 json_request GET "/api/v1/purchases/${PURCHASE_ID}" "200" "" >/dev/null
 
+PURCHASE_MOVEMENTS_RESPONSE="$(json_request GET "/api/v1/stock-movements?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+
 PRODUCT_AFTER_PURCHASE_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
 
-PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_RESPONSE="$PRODUCT_AFTER_PURCHASE_RESPONSE" PURCHASE_ID="$PURCHASE_ID" SUPPLIER_ID="$SUPPLIER_ID" PRODUCT_ID="$PRODUCT_ID" python3 - <<'PYVALIDATION'
+PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PURCHASE_MOVEMENTS_RESPONSE="$PURCHASE_MOVEMENTS_RESPONSE" PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_RESPONSE="$PRODUCT_AFTER_PURCHASE_RESPONSE" PURCHASE_ID="$PURCHASE_ID" SUPPLIER_ID="$SUPPLIER_ID" PRODUCT_ID="$PRODUCT_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 
 purchase = json.loads(os.environ["PURCHASE_RESPONSE"])["data"]
+purchase_movements_payload = json.loads(os.environ["PURCHASE_MOVEMENTS_RESPONSE"])
+purchase_movements = purchase_movements_payload["data"]
 before_product = json.loads(os.environ["PRODUCT_BEFORE_PURCHASE_RESPONSE"])["data"]
 after_product = json.loads(os.environ["PRODUCT_AFTER_PURCHASE_RESPONSE"])["data"]
 
@@ -766,6 +790,14 @@ assert movement["type"] == "IN", "Movimento de compra deveria ser IN"
 assert movement["productId"] == product_id, "productId do movimento da compra não bate"
 assert movement["quantity"] == 4, "Quantidade do movimento deveria ser 4"
 
+assert len(purchase_movements) == 1, "Filtro por purchaseId deveria retornar 1 movimentação"
+purchase_movement = purchase_movements[0]
+assert purchase_movement["purchaseId"] == purchase_id, "Filtro purchaseId retornou movimento com purchaseId incorreto"
+assert purchase_movement["saleId"] is None, "Movimento filtrado por purchaseId não deveria ter saleId"
+assert purchase_movement["type"] == "IN", "Movimento filtrado por purchaseId deveria ser IN"
+assert purchase_movement["productId"] == product_id, "Movimento filtrado por purchaseId veio com produto incorreto"
+assert purchase_movement["quantity"] == 4, "Movimento filtrado por purchaseId deveria ter quantidade 4"
+
 from decimal import Decimal
 
 before_stock = Decimal(str(before_product["currentStock"]))
@@ -774,6 +806,11 @@ after_stock = Decimal(str(after_product["currentStock"]))
 expected_after_stock = before_stock + Decimal("4")
 assert after_stock == expected_after_stock, (
     f"Estoque após compra deveria ser {expected_after_stock}, veio {after_stock}"
+)
+
+after_cost_price = Decimal(str(after_product["costPrice"]))
+assert after_cost_price == Decimal("11.25"), (
+    f"costPrice após compra deveria ser 11.25, veio {after_cost_price}"
 )
 PYVALIDATION
 
