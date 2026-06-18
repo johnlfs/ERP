@@ -40,3 +40,7 @@ docker-data
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# AI/local agent files
+AGENTS.md
+CLAUDE.md

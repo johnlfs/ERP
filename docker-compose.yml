@@ -4,29 +4,59 @@ services:
     container_name: erp-retailflow-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: retailflow
-      POSTGRES_PASSWORD: retailflow123
-      POSTGRES_DB: retailflow_db
+      POSTGRES_USER: ${DB_USER:-retailflow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-retailflow123}
+      POSTGRES_DB: ${DB_NAME:-retailflow_db}
+      TZ: America/Sao_Paulo
+      PGTZ: America/Sao_Paulo
     ports:
       - "5434:5432"
     volumes:
       - retailflow_postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups  # Para dumps manuais
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U retailflow -d retailflow_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-retailflow} -d ${DB_NAME:-retailflow_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    networks:
+      - retailflow-network
+    # Descomente para produção:
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 2G
 
   redis:
     image: redis:7-alpine
     container_name: erp-retailflow-redis
     restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --requirepass ${REDIS_PASSWORD:-retailflow123}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
     ports:
       - "6380:6379"
     volumes:
       - retailflow_redis_data:/data
-    command: ["redis-server", "--appendonly", "yes"]
+    networks:
+      - retailflow-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-retailflow123} --raw incr ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   retailflow_postgres_data:
+    driver: local
   retailflow_redis_data:
+    driver: local
+
+networks:
+  retailflow-network:
+    driver: bridge

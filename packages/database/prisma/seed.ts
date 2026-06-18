@@ -1,5 +1,6 @@
-import { UserRole } from '@prisma/client';
-import { prisma } from '../src/prisma';
+import { PrismaClient, UserRole } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 async function main() {
   const store = await prisma.store.upsert({
@@ -56,7 +57,7 @@ async function main() {
     },
   });
 
-  const product = await prisma.product.upsert({
+  await prisma.product.upsert({
     where: {
       storeId_internalCode: {
         storeId: store.id,
@@ -80,27 +81,7 @@ async function main() {
     },
   });
 
-  console.log({
-    message: 'Seed concluído com sucesso',
-    store: {
-      id: store.id,
-      name: store.name,
-    },
-    admin: {
-      id: admin.id,
-      name: admin.name,
-      email: admin.email,
-    },
-    category: {
-      id: category.id,
-      name: category.name,
-    },
-    product: {
-      id: product.id,
-      name: product.name,
-      internalCode: product.internalCode,
-    },
-  });
+  console.log('Seed concluído com sucesso');
 }
 
 main()

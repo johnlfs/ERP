@@ -10,11 +10,11 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "format": "prettier --write .",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
     "db:up": "docker compose up -d postgres redis",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres",
-    "infra:up": "docker compose up -d",
-    "infra:down": "docker compose down"
+    "db:logs": "docker compose logs -f postgres"
   },
   "keywords": [
     "erp",
@@ -34,7 +34,7 @@
     "pnpm": ">=9.0.0"
   },
   "devDependencies": {
-    "prettier": "^3.4.2",
-    "typescript": "^5.7.2"
+    "prettier": "3.4.2",
+    "typescript": "5.9.3"
   }
 }
