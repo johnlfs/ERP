@@ -4,8 +4,10 @@ import {
   Inject,
   ServiceUnavailableException
 } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DatabaseService } from './database.service';
 
+@ApiTags('database')
 @Controller('database')
 export class DatabaseController {
   constructor(
@@ -14,6 +16,7 @@ export class DatabaseController {
   ) {}
 
   @Get('status')
+  @ApiOperation({ summary: 'Verifica conexão com o banco de dados' })
   async getStatus() {
     try {
       const [users, stores, products] = await Promise.all([

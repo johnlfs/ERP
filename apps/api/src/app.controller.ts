@@ -1,8 +1,11 @@
 import { Controller, Get } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('health')
 @Controller()
 export class AppController {
   @Get()
+  @ApiOperation({ summary: 'Retorna informações básicas da API' })
   getRoot() {
     return {
       app: 'RetailFlow Pro API',
@@ -12,6 +15,7 @@ export class AppController {
   }
 
   @Get('health')
+  @ApiOperation({ summary: 'Healthcheck da API' })
   getHealth() {
     return {
       status: 'ok',

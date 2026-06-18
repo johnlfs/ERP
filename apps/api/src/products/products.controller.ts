@@ -1,4 +1,5 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { apiListResponse, apiResponse } from '../common/api-response';
 import {
   createPaginationMeta,
@@ -11,6 +12,7 @@ import {
 } from '../common/validation';
 import { ProductsService } from './products.service';
 
+@ApiTags('products')
 @Controller('products')
 export class ProductsController {
   constructor(
@@ -19,6 +21,7 @@ export class ProductsController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: 'Lista produtos com paginação, busca e filtro por loja' })
   async findAll(@Query() query: Record<string, string | undefined>) {
     const pagination = parsePagination(query);
     const storeId = validateOptionalUuidQuery(query.storeId, 'storeId');
@@ -40,6 +43,7 @@ export class ProductsController {
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Busca um produto por ID' })
   async findById(@Param('id') id: string) {
     const product = await this.productsService.findById(
       validateUuidParam(id, 'id')
