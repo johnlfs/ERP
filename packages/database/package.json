@@ -12,7 +12,8 @@
     "db:studio": "dotenv -e ../../.env -- prisma studio --schema=prisma/schema.prisma",
     "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "db:status": "dotenv -e ../../.env -- prisma migrate status --schema=prisma/schema.prisma",
-    "db:diff": "dotenv -e ../../.env -- prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script"
+    "db:diff": "dotenv -e ../../.env -- prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script",
+    "db:cleanup:smoke": "dotenv -e ../../.env -- node scripts/cleanup-smoke-data.js"
   },
   "dependencies": {
     "@prisma/client": "6.19.0"

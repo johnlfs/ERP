@@ -4,6 +4,23 @@ set -euo pipefail
 API_BASE_URL="${API_BASE_URL:-http://localhost:53001}"
 STORE_ID="${SMOKE_STORE_ID:-00000000-0000-0000-0000-000000000001}"
 
+cleanup_smoke_data() {
+  echo
+  echo "Limpando dados criados pelo smoke test..."
+
+  if pnpm --filter @erp/database db:cleanup:smoke >/tmp/retailflow-smoke-cleanup.log 2>&1; then
+    cat /tmp/retailflow-smoke-cleanup.log
+    echo "Limpeza smoke concluída."
+  else
+    echo "Aviso: falha ao limpar dados smoke."
+    cat /tmp/retailflow-smoke-cleanup.log || true
+  fi
+
+  rm -f /tmp/retailflow-smoke-cleanup.log
+}
+
+trap cleanup_smoke_data EXIT
+
 echo "== RetailFlow Pro API Smoke Test =="
 echo "API_BASE_URL=${API_BASE_URL}"
 echo "STORE_ID=${STORE_ID}"
