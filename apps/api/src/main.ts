@@ -1,15 +1,15 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  app.useGlobalFilters(new HttpExceptionFilter());
+
   app.enableCors({
-    origin: [
-      'http://localhost:53000',
-      'http://localhost:53002'
-    ],
+    origin: ['http://localhost:53000', 'http://localhost:53002'],
     credentials: true
   });
 

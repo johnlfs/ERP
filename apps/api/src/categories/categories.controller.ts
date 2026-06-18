@@ -4,6 +4,11 @@ import {
   createPaginationMeta,
   parsePagination
 } from '../common/pagination';
+import {
+  normalizeSearch,
+  validateOptionalUuidQuery,
+  validateUuidParam
+} from '../common/validation';
 import { CategoriesService } from './categories.service';
 
 @Controller('categories')
@@ -16,25 +21,29 @@ export class CategoriesController {
   @Get()
   async findAll(@Query() query: Record<string, string | undefined>) {
     const pagination = parsePagination(query);
+    const storeId = validateOptionalUuidQuery(query.storeId, 'storeId');
+    const search = normalizeSearch(query.search);
 
     const result = await this.categoriesService.findAll({
-      storeId: query.storeId,
-      search: query.search,
+      storeId,
+      search,
       pagination
     });
 
     return apiListResponse(
       result.data,
       createPaginationMeta(result.total, result.data.length, pagination, {
-        storeId: query.storeId ?? null,
-        search: query.search ?? null
+        storeId: storeId ?? null,
+        search: search ?? null
       })
     );
   }
 
   @Get(':id')
   async findById(@Param('id') id: string) {
-    const category = await this.categoriesService.findById(id);
+    const category = await this.categoriesService.findById(
+      validateUuidParam(id, 'id')
+    );
 
     return apiResponse(category);
   }

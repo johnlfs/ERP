@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 export type PaginationQuery = {
   page?: string | number;
   pageSize?: string | number;
@@ -14,34 +16,57 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
-function toPositiveInteger(
+function parsePositiveInteger(
   value: string | number | undefined,
+  field: 'page' | 'pageSize',
   fallback: number
 ): number {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
   const parsed = Number(value);
 
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    return fallback;
+    throw new BadRequestException({
+      code: 'INVALID_PAGINATION_PARAM',
+      message: `Query param "${field}" deve ser um número inteiro positivo`,
+      details: {
+        field,
+        value
+      }
+    });
   }
 
   return parsed;
 }
 
 export function parsePagination(query: PaginationQuery): ParsedPagination {
-  const page = toPositiveInteger(query.page, DEFAULT_PAGE);
+  const page = parsePositiveInteger(query.page, 'page', DEFAULT_PAGE);
 
-  const requestedPageSize = toPositiveInteger(
+  const requestedPageSize = parsePositiveInteger(
     query.pageSize,
+    'pageSize',
     DEFAULT_PAGE_SIZE
   );
 
-  const pageSize = Math.min(requestedPageSize, MAX_PAGE_SIZE);
+  if (requestedPageSize > MAX_PAGE_SIZE) {
+    throw new BadRequestException({
+      code: 'PAGE_SIZE_TOO_LARGE',
+      message: `Query param "pageSize" deve ser no máximo ${MAX_PAGE_SIZE}`,
+      details: {
+        field: 'pageSize',
+        value: requestedPageSize,
+        max: MAX_PAGE_SIZE
+      }
+    });
+  }
 
   return {
     page,
-    pageSize,
-    skip: (page - 1) * pageSize,
-    take: pageSize
+    pageSize: requestedPageSize,
+    skip: (page - 1) * requestedPageSize,
+    take: requestedPageSize
   };
 }
 
