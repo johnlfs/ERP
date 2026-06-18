@@ -16,6 +16,7 @@ import { AuthenticatedUser } from '../auth/auth.types';
 import { ensureUserCanWriteStore } from '../auth/store-access';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
+import { CancelSaleDto } from './dto/cancel-sale.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
 
 const saleInclude = {
@@ -27,6 +28,13 @@ const saleInclude = {
     }
   },
   user: {
+    select: {
+      id: true,
+      name: true,
+      email: true
+    }
+  },
+  canceledBy: {
     select: {
       id: true,
       name: true,
@@ -48,8 +56,26 @@ const saleInclude = {
   }
 } satisfies Prisma.SaleInclude;
 
+const saleCancellationInclude = {
+  items: {
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          currentStock: true
+        }
+      }
+    }
+  }
+} satisfies Prisma.SaleInclude;
+
 type SaleWithRelations = Prisma.SaleGetPayload<{
   include: typeof saleInclude;
+}>;
+
+type SaleForCancellation = Prisma.SaleGetPayload<{
+  include: typeof saleCancellationInclude;
 }>;
 
 type FindAllSalesParams = {
@@ -83,8 +109,12 @@ export class SalesService {
       total: this.decimalToNumber(sale.total),
       document: sale.document,
       notes: sale.notes,
+      canceledAt: sale.canceledAt,
+      canceledByUserId: sale.canceledByUserId,
+      cancellationReason: sale.cancellationReason,
       store: sale.store,
       user: sale.user,
+      canceledBy: sale.canceledBy,
       items: sale.items.map((item) => ({
         id: item.id,
         saleId: item.saleId,
@@ -115,6 +145,15 @@ export class SalesService {
       throw new ForbiddenException({
         code: 'STORE_ACCESS_DENIED',
         message: 'Usuário não possui acesso à loja informada'
+      });
+    }
+  }
+
+  private ensureSaleCanBeCanceled(sale: SaleForCancellation) {
+    if (sale.status === SaleStatus.CANCELED) {
+      throw new BadRequestException({
+        code: 'SALE_ALREADY_CANCELED',
+        message: 'Venda já está cancelada'
       });
     }
   }
@@ -349,6 +388,79 @@ export class SalesService {
       }
 
       return this.formatSale(createdSale);
+    });
+  }
+
+  async cancel(id: string, input: CancelSaleDto, user: AuthenticatedUser) {
+    return this.database.$transaction(async (tx) => {
+      const sale = await tx.sale.findUnique({
+        where: {
+          id
+        },
+        include: saleCancellationInclude
+      });
+
+      if (!sale) {
+        throw new NotFoundException('Venda não encontrada');
+      }
+
+      ensureUserCanWriteStore(user, sale.storeId);
+      this.ensureSaleCanBeCanceled(sale);
+
+      for (const item of sale.items) {
+        const quantity = new Prisma.Decimal(item.quantity);
+        const beforeStock = new Prisma.Decimal(item.product.currentStock);
+        const afterStock = beforeStock.plus(quantity);
+
+        await tx.stockMovement.create({
+          data: {
+            storeId: sale.storeId,
+            productId: item.productId,
+            userId: user.id,
+            saleId: sale.id,
+            type: StockMovementType.IN,
+            quantity,
+            beforeStock,
+            afterStock,
+            reason: `Cancelamento de venda: ${input.reason}`,
+            document: sale.document ?? `SALE-CANCEL-${sale.id}`
+          }
+        });
+
+        await tx.product.update({
+          where: {
+            id: item.productId
+          },
+          data: {
+            currentStock: afterStock
+          }
+        });
+      }
+
+      await tx.sale.update({
+        where: {
+          id: sale.id
+        },
+        data: {
+          status: SaleStatus.CANCELED,
+          canceledAt: new Date(),
+          canceledByUserId: user.id,
+          cancellationReason: input.reason
+        }
+      });
+
+      const canceledSale = await tx.sale.findUnique({
+        where: {
+          id: sale.id
+        },
+        include: saleInclude
+      });
+
+      if (!canceledSale) {
+        throw new NotFoundException('Venda não encontrada após cancelamento');
+      }
+
+      return this.formatSale(canceledSale);
     });
   }
 }

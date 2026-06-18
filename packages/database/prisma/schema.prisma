@@ -54,7 +54,8 @@ model User {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
-  sales          Sale[]
+  sales          Sale[]          @relation("SaleCreatedBy")
+  canceledSales  Sale[]          @relation("SaleCanceledBy")
 
   @@map("users")
 }
@@ -170,19 +171,23 @@ model StockMovement {
 }
 
 model Sale {
-  id            String        @id @default(uuid())
-  storeId       String
-  userId        String
-  status        SaleStatus    @default(COMPLETED)
-  paymentMethod PaymentMethod
-  subtotal      Decimal       @db.Decimal(12, 2)
-  discount      Decimal       @default(0) @db.Decimal(12, 2)
-  total         Decimal       @db.Decimal(12, 2)
-  document      String?
-  notes         String?
+  id                 String        @id @default(uuid())
+  storeId            String
+  userId             String
+  status             SaleStatus    @default(COMPLETED)
+  paymentMethod      PaymentMethod
+  subtotal           Decimal       @db.Decimal(12, 2)
+  discount           Decimal       @default(0) @db.Decimal(12, 2)
+  total              Decimal       @db.Decimal(12, 2)
+  document           String?
+  notes              String?
+  canceledAt         DateTime?
+  canceledByUserId   String?
+  cancellationReason String?
 
-  store Store @relation(fields: [storeId], references: [id])
-  user  User  @relation(fields: [userId], references: [id])
+  store      Store @relation(fields: [storeId], references: [id])
+  user       User  @relation("SaleCreatedBy", fields: [userId], references: [id])
+  canceledBy User? @relation("SaleCanceledBy", fields: [canceledByUserId], references: [id])
 
   items          SaleItem[]
   stockMovements StockMovement[]
@@ -192,6 +197,7 @@ model Sale {
 
   @@index([storeId, createdAt])
   @@index([userId, createdAt])
+  @@index([canceledByUserId])
   @@map("sales")
 }
 

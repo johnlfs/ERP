@@ -4,6 +4,7 @@ import {
   Get,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards
@@ -21,6 +22,7 @@ import {
   parsePagination
 } from '../common/pagination';
 import { validateUuidParam } from '../common/validation';
+import { CancelSaleDto } from './dto/cancel-sale.dto';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { ListSalesQueryDto } from './dto/list-sales-query.dto';
 import { SalesService } from './sales.service';
@@ -83,6 +85,22 @@ export class SalesController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     const sale = await this.salesService.create(body, user);
+
+    return apiResponse(sale);
+  }
+
+  @Patch(':id/cancel')
+  @ApiOperation({ summary: 'Cancela venda e estorna estoque' })
+  async cancel(
+    @Param('id') id: string,
+    @Body() body: CancelSaleDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const sale = await this.salesService.cancel(
+      validateUuidParam(id, 'id'),
+      body,
+      user
+    );
 
     return apiResponse(sale);
   }

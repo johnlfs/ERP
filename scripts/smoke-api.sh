@@ -176,6 +176,8 @@ JSON
 
 json_request POST "/api/v1/sales" "401" "$UNAUTHORIZED_SALE_PAYLOAD" >/dev/null
 
+request PATCH "/api/v1/sales/00000000-0000-0000-0000-000000000001/cancel" "401"
+
 
 LOGIN_PAYLOAD="$(cat <<JSON
 {
@@ -355,6 +357,73 @@ printf '%s' "$PRODUCT_AFTER_SALE_RESPONSE" | python3 -c 'import sys,json; payloa
 
 json_request GET "/api/v1/sales?page=1&pageSize=10" "200" "" >/dev/null
 json_request GET "/api/v1/sales/${SALE_ID}" "200" "" >/dev/null
+
+CANCEL_SALE_PAYLOAD="$(cat <<JSON
+{
+  "reason": "Cancelamento pelo smoke test"
+}
+JSON
+)"
+
+CANCELED_SALE_RESPONSE="$(json_request PATCH "/api/v1/sales/${SALE_ID}/cancel" "200" "$CANCEL_SALE_PAYLOAD")"
+
+CANCELED_SALE_RESPONSE="$CANCELED_SALE_RESPONSE" python3 - <<'PYVALIDATION'
+import json
+import os
+
+payload = json.loads(os.environ["CANCELED_SALE_RESPONSE"])
+sale = payload["data"]
+
+assert sale["status"] == "CANCELED", f"Status esperado CANCELED, veio {sale.get('status')}"
+assert sale["canceledAt"] is not None, "canceledAt deveria estar preenchido"
+assert sale["canceledByUserId"] is not None, "canceledByUserId deveria estar preenchido"
+assert sale["cancellationReason"] == "Cancelamento pelo smoke test", (
+    f"cancellationReason inesperado: {sale.get('cancellationReason')}"
+)
+PYVALIDATION
+
+SALE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/stock-movements?saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
+
+SALE_ID="$SALE_ID" SALE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$SALE_MOVEMENTS_AFTER_CANCEL_RESPONSE" python3 - <<'PYVALIDATION'
+import json
+import os
+
+sale_id = os.environ["SALE_ID"]
+payload = json.loads(os.environ["SALE_MOVEMENTS_AFTER_CANCEL_RESPONSE"])
+data = payload["data"]
+
+assert len(data) >= 2, f"Cancelamento deveria deixar pelo menos 2 movimentações da venda, veio {len(data)}"
+
+types = [movement["type"] for movement in data]
+assert "OUT" in types, f"Movimentação OUT original não encontrada. Tipos: {types}"
+assert "IN" in types, f"Movimentação IN de estorno não encontrada. Tipos: {types}"
+
+for movement in data:
+    assert movement["saleId"] == sale_id, (
+        f"saleId da movimentação diferente da venda: {movement.get('saleId')} != {sale_id}"
+    )
+
+in_movements = [
+    movement for movement in data
+    if movement["type"] == "IN" and float(movement["quantity"]) == 2.0
+]
+
+assert len(in_movements) >= 1, "Movimentação IN de estorno com quantidade 2 não encontrada"
+PYVALIDATION
+
+PRODUCT_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
+
+PRODUCT_AFTER_CANCEL_RESPONSE="$PRODUCT_AFTER_CANCEL_RESPONSE" python3 - <<'PYVALIDATION'
+import json
+import os
+
+payload = json.loads(os.environ["PRODUCT_AFTER_CANCEL_RESPONSE"])
+current = float(payload["data"]["currentStock"])
+
+assert current == 14.0, f"Estoque final esperado após cancelamento era 14, veio {current}"
+PYVALIDATION
+
+json_request PATCH "/api/v1/sales/${SALE_ID}/cancel" "400" "$CANCEL_SALE_PAYLOAD" >/dev/null
 
 SALE_TOO_MUCH_PAYLOAD="$(cat <<JSON
 {
