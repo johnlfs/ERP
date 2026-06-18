@@ -1,4 +1,5 @@
 import { Controller, Get, Inject, Param } from '@nestjs/common';
+import { apiListResponse, apiResponse } from '../common/api-response';
 import { StoresService } from './stores.service';
 
 @Controller('stores')
@@ -9,12 +10,16 @@ export class StoresController {
   ) {}
 
   @Get()
-  findAll() {
-    return this.storesService.findAll();
+  async findAll() {
+    const stores = await this.storesService.findAll();
+
+    return apiListResponse(stores);
   }
 
   @Get(':id')
-  findById(@Param('id') id: string) {
-    return this.storesService.findById(id);
+  async findById(@Param('id') id: string) {
+    const store = await this.storesService.findById(id);
+
+    return apiResponse(store);
   }
 }
