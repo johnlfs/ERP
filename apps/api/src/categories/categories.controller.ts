@@ -1,13 +1,13 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { apiListResponse, apiResponse } from '../common/api-response';
+import { ListByStoreQueryDto } from '../common/dto/list-by-store-query.dto';
 import {
   createPaginationMeta,
   parsePagination
 } from '../common/pagination';
 import {
   normalizeSearch,
-  validateOptionalUuidQuery,
   validateUuidParam
 } from '../common/validation';
 import { CategoriesService } from './categories.service';
@@ -22,10 +22,10 @@ export class CategoriesController {
 
   @Get()
   @ApiOperation({ summary: 'Lista categorias com paginação, busca e filtro por loja' })
-  async findAll(@Query() query: Record<string, string | undefined>) {
+  async findAll(@Query() query: ListByStoreQueryDto) {
     const pagination = parsePagination(query);
-    const storeId = validateOptionalUuidQuery(query.storeId, 'storeId');
     const search = normalizeSearch(query.search);
+    const storeId = query.storeId;
 
     const result = await this.categoriesService.findAll({
       storeId,

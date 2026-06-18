@@ -1,6 +1,7 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { apiListResponse, apiResponse } from '../common/api-response';
+import { ListQueryDto } from '../common/dto/list-query.dto';
 import {
   createPaginationMeta,
   parsePagination
@@ -21,7 +22,7 @@ export class StoresController {
 
   @Get()
   @ApiOperation({ summary: 'Lista lojas com paginação e busca' })
-  async findAll(@Query() query: Record<string, string | undefined>) {
+  async findAll(@Query() query: ListQueryDto) {
     const pagination = parsePagination(query);
     const search = normalizeSearch(query.search);
 
