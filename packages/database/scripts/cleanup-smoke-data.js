@@ -16,11 +16,6 @@ async function main() {
         internalCode: {
           startsWith: 'SMOKE-PROD-'
         }
-      },
-      {
-        barcode: {
-          startsWith: '789'
-        }
       }
     ]
   };
@@ -33,11 +28,6 @@ async function main() {
 
   const stockMovementWhere = {
     OR: [
-      {
-        reason: {
-          startsWith: 'Smoke '
-        }
-      },
       {
         document: {
           startsWith: 'SMOKE-'
