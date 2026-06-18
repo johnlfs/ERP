@@ -1,5 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
+
+type FindAllCategoriesParams = {
+  storeId?: string;
+  search?: string;
+  pagination: ParsedPagination;
+};
 
 @Injectable()
 export class CategoriesService {
@@ -8,44 +16,64 @@ export class CategoriesService {
     private readonly database: DatabaseService
   ) {}
 
-  async findAll(storeId?: string) {
-    const categories = await this.database.category.findMany({
-      where: storeId
+  async findAll(params: FindAllCategoriesParams) {
+    const search = params.search?.trim();
+
+    const where: Prisma.CategoryWhereInput = {
+      ...(params.storeId ? { storeId: params.storeId } : {}),
+      ...(search
         ? {
-            storeId
+            name: {
+              contains: search,
+              mode: 'insensitive'
+            }
           }
-        : undefined,
-      orderBy: {
-        name: 'asc'
-      },
-      include: {
-        store: {
-          select: {
-            id: true,
-            name: true,
-            tradeName: true
-          }
+        : {})
+    };
+
+    const [total, categories] = await this.database.$transaction([
+      this.database.category.count({
+        where
+      }),
+      this.database.category.findMany({
+        where,
+        skip: params.pagination.skip,
+        take: params.pagination.take,
+        orderBy: {
+          name: 'asc'
         },
-        _count: {
-          select: {
-            products: true
+        include: {
+          store: {
+            select: {
+              id: true,
+              name: true,
+              tradeName: true
+            }
+          },
+          _count: {
+            select: {
+              products: true
+            }
           }
         }
-      }
-    });
+      })
+    ]);
 
-    return categories.map((category) => ({
-      id: category.id,
-      storeId: category.storeId,
-      name: category.name,
-      isActive: category.isActive,
-      store: category.store,
-      totals: {
-        products: category._count.products
-      },
-      createdAt: category.createdAt,
-      updatedAt: category.updatedAt
-    }));
+    return {
+      total,
+      data: categories.map((category) => ({
+        id: category.id,
+        storeId: category.storeId,
+        name: category.name,
+        isActive: category.isActive,
+        store: category.store,
+        totals: {
+          products: category._count.products
+        },
+        createdAt: category.createdAt,
+        updatedAt: category.updatedAt
+      }))
+    };
   }
 
   async findById(id: string) {

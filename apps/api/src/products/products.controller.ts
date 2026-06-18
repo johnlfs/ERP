@@ -1,5 +1,9 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { apiListResponse, apiResponse } from '../common/api-response';
+import {
+  createPaginationMeta,
+  parsePagination
+} from '../common/pagination';
 import { ProductsService } from './products.service';
 
 @Controller('products')
@@ -10,12 +14,22 @@ export class ProductsController {
   ) {}
 
   @Get()
-  async findAll(@Query('storeId') storeId?: string) {
-    const products = await this.productsService.findAll(storeId);
+  async findAll(@Query() query: Record<string, string | undefined>) {
+    const pagination = parsePagination(query);
 
-    return apiListResponse(products, {
-      storeId: storeId ?? null
+    const result = await this.productsService.findAll({
+      storeId: query.storeId,
+      search: query.search,
+      pagination
     });
+
+    return apiListResponse(
+      result.data,
+      createPaginationMeta(result.total, result.data.length, pagination, {
+        storeId: query.storeId ?? null,
+        search: query.search ?? null
+      })
+    );
   }
 
   @Get(':id')
