@@ -258,6 +258,8 @@ JSON
 
 CUSTOMER_RESPONSE="$(json_request POST "/api/v1/customers" "201" "$CUSTOMER_PAYLOAD")"
 
+json_request POST "/api/v1/customers" "409" "$CUSTOMER_PAYLOAD" >/dev/null
+
 CUSTOMER_ID="$(printf '%s' "$CUSTOMER_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
 
 json_request GET "/api/v1/customers?page=1&pageSize=10&search=Smoke" "200" "" >/dev/null
@@ -281,6 +283,48 @@ JSON
 )"
 
 json_request PATCH "/api/v1/customers/${CUSTOMER_ID}/status" "200" "$CUSTOMER_INACTIVE_PAYLOAD" >/dev/null
+
+SALE_WITH_INACTIVE_CUSTOMER_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "customerId": "${CUSTOMER_ID}",
+  "paymentMethod": "PIX",
+  "document": "SMOKE-SALE-INACTIVE-CUSTOMER-${SMOKE_SUFFIX}",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitPrice": 24.9,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/sales" "400" "$SALE_WITH_INACTIVE_CUSTOMER_PAYLOAD" >/dev/null
+
+SALE_WITH_UNKNOWN_CUSTOMER_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "customerId": "00000000-0000-0000-0000-000000009999",
+  "paymentMethod": "PIX",
+  "document": "SMOKE-SALE-UNKNOWN-CUSTOMER-${SMOKE_SUFFIX}",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitPrice": 24.9,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/sales" "404" "$SALE_WITH_UNKNOWN_CUSTOMER_PAYLOAD" >/dev/null
 
 CUSTOMER_ACTIVE_PAYLOAD="$(cat <<JSON
 {
@@ -385,6 +429,25 @@ JSON
 SALE_RESPONSE="$(json_request POST "/api/v1/sales" "201" "$SALE_PAYLOAD")"
 
 SALE_ID="$(printf '%s' "$SALE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+CUSTOMER_ID="$CUSTOMER_ID" SALE_RESPONSE="$SALE_RESPONSE" python3 - <<'PYVALIDATION'
+import json
+import os
+
+customer_id = os.environ["CUSTOMER_ID"]
+payload = json.loads(os.environ["SALE_RESPONSE"])
+sale = payload["data"]
+
+assert sale["customerId"] == customer_id, (
+    f"customerId da venda deveria ser {customer_id}, veio {sale.get('customerId')}"
+)
+
+customer = sale.get("customer")
+assert customer is not None, "Venda deveria retornar objeto customer"
+assert customer["id"] == customer_id, (
+    f"customer.id da venda deveria ser {customer_id}, veio {customer.get('id')}"
+)
+PYVALIDATION
 
 SALE_MOVEMENTS_RESPONSE="$(json_request GET "/api/v1/stock-movements?saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
 
