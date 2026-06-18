@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
@@ -171,6 +176,13 @@ export class CategoriesService {
   }
 
   async update(id: string, input: UpdateCategoryDto) {
+    if (input.name === undefined) {
+      throw new BadRequestException({
+        code: 'EMPTY_UPDATE_BODY',
+        message: 'Informe pelo menos um campo para atualizar'
+      });
+    }
+
     await this.findById(id);
 
     const category = await this.database.category.update({
@@ -178,7 +190,7 @@ export class CategoriesService {
         id
       },
       data: {
-        ...(input.name !== undefined ? { name: input.name } : {})
+        name: input.name
       },
       include: {
         store: {
