@@ -5,6 +5,7 @@ import { AppConfigModule } from './config/app-config.module';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './database/database.module';
 import { ProductsModule } from './products/products.module';
+import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { StoresModule } from './stores/stores.module';
 
 @Module({
@@ -14,6 +15,7 @@ import { StoresModule } from './stores/stores.module';
     DatabaseModule,
     StoresModule,
     ProductsModule,
+    StockMovementsModule,
     CategoriesModule
   ],
   controllers: [AppController]

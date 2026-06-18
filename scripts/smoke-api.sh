@@ -111,6 +111,7 @@ request GET "/api/v1/database/status" "200"
 request GET "/api/v1/stores?page=1&pageSize=10" "200"
 request GET "/api/v1/categories?page=1&pageSize=10" "200"
 request GET "/api/v1/products?page=1&pageSize=10&search=produto" "200"
+request GET "/api/v1/stock-movements?page=1&pageSize=10" "401"
 
 UNAUTHORIZED_CATEGORY_PAYLOAD="$(cat <<JSON
 {
@@ -141,6 +142,19 @@ JSON
 )"
 
 json_request POST "/api/v1/products" "401" "$UNAUTHORIZED_PRODUCT_PAYLOAD" >/dev/null
+
+UNAUTHORIZED_STOCK_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "productId": "00000000-0000-0000-0000-000000000001",
+  "type": "IN",
+  "quantity": 1,
+  "reason": "Smoke sem token"
+}
+JSON
+)"
+
+json_request POST "/api/v1/stock-movements" "401" "$UNAUTHORIZED_STOCK_PAYLOAD" >/dev/null
 
 LOGIN_PAYLOAD="$(cat <<JSON
 {
@@ -220,6 +234,49 @@ json_request PATCH "/api/v1/products/${PRODUCT_ID}/status" "200" '{
 }' >/dev/null
 
 json_request PATCH "/api/v1/products/${PRODUCT_ID}" "400" '{}' >/dev/null
+
+STOCK_IN_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "productId": "${PRODUCT_ID}",
+  "type": "IN",
+  "quantity": 10,
+  "reason": "Smoke entrada de estoque",
+  "document": "SMOKE-IN-${SMOKE_SUFFIX}"
+}
+JSON
+)"
+
+json_request POST "/api/v1/stock-movements" "201" "$STOCK_IN_PAYLOAD" >/dev/null
+
+STOCK_OUT_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "productId": "${PRODUCT_ID}",
+  "type": "OUT",
+  "quantity": 3,
+  "reason": "Smoke saída de estoque",
+  "document": "SMOKE-OUT-${SMOKE_SUFFIX}"
+}
+JSON
+)"
+
+json_request POST "/api/v1/stock-movements" "201" "$STOCK_OUT_PAYLOAD" >/dev/null
+
+STOCK_OUT_TOO_MUCH_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "productId": "${PRODUCT_ID}",
+  "type": "OUT",
+  "quantity": 999999,
+  "reason": "Smoke saída acima do estoque"
+}
+JSON
+)"
+
+json_request POST "/api/v1/stock-movements" "400" "$STOCK_OUT_TOO_MUCH_PAYLOAD" >/dev/null
+
+json_request GET "/api/v1/stock-movements?page=1&pageSize=10" "200" "" >/dev/null
 
 request GET "/api/v1/products?page=abc" "400"
 request GET "/api/v1/products?storeId=abc" "400"

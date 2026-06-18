@@ -2,69 +2,70 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
-const includeTestData = process.env.CLEAN_TEST_DATA === 'true';
-
-const productPrefixes = ['SMOKE-PROD-'];
-const productNamePrefixes = ['Smoke Produto '];
-const categoryNamePrefixes = ['Smoke Categoria '];
-
-if (includeTestData) {
-  productNamePrefixes.push('Teste Produto ');
-  categoryNamePrefixes.push('Teste Categoria ');
-  productPrefixes.push('PROD-178');
-}
-
-function startsWithFilters(field, prefixes) {
-  return prefixes.map((prefix) => ({
-    [field]: {
-      startsWith: prefix
-    }
-  }));
-}
+const includeTestData = process.env.SMOKE_INCLUDE_TEST_DATA === 'true';
 
 async function main() {
-  const smokeCategories = await prisma.category.findMany({
-    where: {
-      OR: startsWithFilters('name', categoryNamePrefixes)
-    },
-    select: {
-      id: true,
-      name: true
-    }
-  });
-
-  const smokeCategoryIds = smokeCategories.map((category) => category.id);
-
-  const productDeleteWhere = {
+  const productWhere = {
     OR: [
-      ...startsWithFilters('name', productNamePrefixes),
-      ...startsWithFilters('internalCode', productPrefixes),
-      ...(smokeCategoryIds.length > 0
-        ? [
-            {
-              categoryId: {
-                in: smokeCategoryIds
-              }
-            }
-          ]
-        : [])
+      {
+        name: {
+          startsWith: 'Smoke Produto'
+        }
+      },
+      {
+        internalCode: {
+          startsWith: 'SMOKE-PROD-'
+        }
+      },
+      {
+        barcode: {
+          startsWith: '789'
+        }
+      }
     ]
   };
 
+  const categoryWhere = {
+    name: {
+      startsWith: 'Smoke Categoria'
+    }
+  };
+
+  const stockMovementWhere = {
+    OR: [
+      {
+        reason: {
+          startsWith: 'Smoke '
+        }
+      },
+      {
+        document: {
+          startsWith: 'SMOKE-'
+        }
+      },
+      {
+        product: productWhere
+      }
+    ]
+  };
+
+  const deletedStockMovements = await prisma.stockMovement.deleteMany({
+    where: stockMovementWhere
+  });
+
   const deletedProducts = await prisma.product.deleteMany({
-    where: productDeleteWhere
+    where: productWhere
   });
 
   const deletedCategories = await prisma.category.deleteMany({
-    where: {
-      OR: startsWithFilters('name', categoryNamePrefixes)
-    }
+    where: categoryWhere
   });
 
   console.log(
     JSON.stringify(
       {
         status: 'ok',
+        deletedStockMovements: deletedStockMovements.count,
         deletedProducts: deletedProducts.count,
         deletedCategories: deletedCategories.count,
         includeTestData
