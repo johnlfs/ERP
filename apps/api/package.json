@@ -15,9 +15,11 @@
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "3.3.0",
     "@nestjs/core": "^10.4.15",
+    "@nestjs/jwt": "10.2.0",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/swagger": "7.4.2",
     "@prisma/client": "6.19.0",
+    "bcryptjs": "2.4.3",
     "class-transformer": "0.5.1",
     "class-validator": "0.14.1",
     "dotenv-cli": "^11.0.0",
@@ -26,6 +28,7 @@
     "swagger-ui-express": "5.0.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
     "@types/node": "^24.0.0",
     "ts-node": "10.9.2",
     "tsconfig-paths": "4.2.0",
