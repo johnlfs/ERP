@@ -50,7 +50,13 @@ function isPositiveInteger(value) {
   return /^\d+$/.test(String(value)) && Number(value) > 0;
 }
 
-const requiredNow = [
+function validateRequired(env, key, errors) {
+  if (!env[key]) {
+    errors.push(`Variável obrigatória ausente no .env: ${key}`);
+  }
+}
+
+const requiredKeys = [
   'NODE_ENV',
   'API_PORT',
   'API_URL',
@@ -60,21 +66,24 @@ const requiredNow = [
   'DB_USER',
   'DB_PASSWORD',
   'DB_NAME',
-  'REDIS_PASSWORD'
-];
-
-const authSoon = [
+  'REDIS_PASSWORD',
   'JWT_SECRET',
   'JWT_EXPIRES_IN',
   'APP_ENCRYPTION_KEY',
   'BCRYPT_SALT_ROUNDS'
 ];
 
+const optionalNumericKeys = [
+  'WEB_PORT',
+  'PDV_PORT',
+  'DB_PORT',
+  'REDIS_PORT'
+];
+
 const env = parseEnvFile(envPath);
 const envExample = parseEnvFile(envExamplePath);
 
 const errors = [];
-const warnings = [];
 
 if (!env) {
   errors.push('Arquivo .env não encontrado na raiz do projeto.');
@@ -85,14 +94,18 @@ if (!envExample) {
 }
 
 if (env) {
-  for (const key of requiredNow) {
-    if (!env[key]) {
-      errors.push(`Variável obrigatória ausente no .env: ${key}`);
-    }
+  for (const key of requiredKeys) {
+    validateRequired(env, key, errors);
   }
 
   if (env.API_PORT && !isPositiveInteger(env.API_PORT)) {
     errors.push('API_PORT deve ser um número inteiro positivo.');
+  }
+
+  for (const key of optionalNumericKeys) {
+    if (env[key] && !isPositiveInteger(env[key])) {
+      errors.push(`${key} deve ser um número inteiro positivo quando informado.`);
+    }
   }
 
   for (const key of ['API_URL', 'WEB_URL', 'PDV_URL']) {
@@ -105,55 +118,41 @@ if (env) {
     errors.push('DATABASE_URL deve começar com postgresql://');
   }
 
-  for (const key of authSoon) {
-    if (!env[key]) {
-      warnings.push(`Variável de Auth ainda não configurada no .env: ${key}`);
-    }
-  }
-
   if (env.JWT_SECRET && env.JWT_SECRET.length < 32) {
-    warnings.push('JWT_SECRET está definido, mas deveria ter pelo menos 32 caracteres.');
+    errors.push('JWT_SECRET deve ter pelo menos 32 caracteres.');
   }
 
   if (env.APP_ENCRYPTION_KEY && env.APP_ENCRYPTION_KEY.length < 32) {
-    warnings.push('APP_ENCRYPTION_KEY está definida, mas deveria ter pelo menos 32 caracteres.');
+    errors.push('APP_ENCRYPTION_KEY deve ter pelo menos 32 caracteres.');
   }
 
   if (
     env.BCRYPT_SALT_ROUNDS &&
     (!isPositiveInteger(env.BCRYPT_SALT_ROUNDS) || Number(env.BCRYPT_SALT_ROUNDS) < 10)
   ) {
-    warnings.push('BCRYPT_SALT_ROUNDS deveria ser um número inteiro maior ou igual a 10.');
+    errors.push('BCRYPT_SALT_ROUNDS deve ser um número inteiro maior ou igual a 10.');
+  }
+
+  if (env.JWT_EXPIRES_IN && !/^\d+[smhd]$/.test(env.JWT_EXPIRES_IN)) {
+    errors.push('JWT_EXPIRES_IN deve usar formato como 15m, 1h, 1d ou 7d.');
   }
 }
 
 if (envExample) {
-  for (const key of [...requiredNow, ...authSoon]) {
+  for (const key of requiredKeys) {
     if (!(key in envExample)) {
-      warnings.push(`Variável ausente no .env.example: ${key}`);
+      errors.push(`Variável obrigatória ausente no .env.example: ${key}`);
     }
   }
 }
 
 console.log('== RetailFlow Pro Env Check ==');
 
-if (errors.length === 0) {
-  console.log('Status: OK');
-} else {
-  console.log('Status: ERROR');
-}
-
-if (warnings.length > 0) {
-  console.log('');
-  console.log('Warnings:');
-  for (const warning of warnings) {
-    console.log(`- ${warning}`);
-  }
-}
-
 if (errors.length > 0) {
+  console.log('Status: ERROR');
   console.log('');
   console.log('Errors:');
+
   for (const error of errors) {
     console.log(`- ${error}`);
   }
@@ -161,6 +160,6 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
+console.log('Status: OK');
 console.log('');
-console.log('Ambiente mínimo atual validado.');
-console.log('As variáveis de Auth ainda são aviso até a Fase 1.16.');
+console.log('Ambiente validado para a base atual e preparado para a Fase 1.16 Auth.');
