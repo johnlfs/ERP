@@ -85,7 +85,6 @@ async function main() {
       {
         status: 'ok',
         email: DEMO_EMAIL,
-        password: DEMO_PASSWORD,
         storeId: store.id
       },
       null,

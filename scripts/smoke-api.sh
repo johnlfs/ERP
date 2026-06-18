@@ -122,6 +122,26 @@ JSON
 
 json_request POST "/api/v1/categories" "401" "$UNAUTHORIZED_CATEGORY_PAYLOAD" >/dev/null
 
+UNAUTHORIZED_PRODUCT_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "categoryId": "00000000-0000-0000-0000-000000000001",
+  "internalCode": "SMOKE-NO-TOKEN",
+  "barcode": "7890000000000",
+  "name": "Smoke Produto Sem Token",
+  "description": "Produto sem token",
+  "costPrice": 10,
+  "salePrice": 19.9,
+  "ncm": "00000000",
+  "unit": "UN",
+  "minStock": 1,
+  "currentStock": 5
+}
+JSON
+)"
+
+json_request POST "/api/v1/products" "401" "$UNAUTHORIZED_PRODUCT_PAYLOAD" >/dev/null
+
 LOGIN_PAYLOAD="$(cat <<JSON
 {
   "email": "${AUTH_EMAIL}",
@@ -183,6 +203,11 @@ PRODUCT_UPDATE_PAYLOAD="$(cat <<JSON
 }
 JSON
 )"
+
+SAVED_AUTH_TOKEN="${AUTH_TOKEN}"
+AUTH_TOKEN=""
+json_request PATCH "/api/v1/products/${PRODUCT_ID}" "401" "$PRODUCT_UPDATE_PAYLOAD" >/dev/null
+AUTH_TOKEN="${SAVED_AUTH_TOKEN}"
 
 json_request PATCH "/api/v1/products/${PRODUCT_ID}" "200" "$PRODUCT_UPDATE_PAYLOAD" >/dev/null
 
