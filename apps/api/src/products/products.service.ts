@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AuthenticatedUser } from '../auth/auth.types';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -66,6 +68,17 @@ export class ProductsService {
       createdAt: product.createdAt,
       updatedAt: product.updatedAt
     };
+  }
+
+  private ensureUserCanAccessStore(user: AuthenticatedUser, storeId: string) {
+    const hasAccess = user.stores.some((store) => store.id === storeId);
+
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        code: 'STORE_ACCESS_DENIED',
+        message: 'Usuário não possui acesso à loja informada'
+      });
+    }
   }
 
   private async ensureStoreExists(storeId: string) {
@@ -173,8 +186,9 @@ export class ProductsService {
     return this.formatProduct(product);
   }
 
-  async create(input: CreateProductDto) {
+  async create(input: CreateProductDto, user: AuthenticatedUser) {
     await this.ensureStoreExists(input.storeId);
+    this.ensureUserCanAccessStore(user, input.storeId);
     await this.ensureCategoryBelongsToStore(input.categoryId, input.storeId);
 
     const product = await this.database.product.create({
@@ -198,7 +212,7 @@ export class ProductsService {
     return this.formatProduct(product);
   }
 
-  async update(id: string, input: UpdateProductDto) {
+  async update(id: string, input: UpdateProductDto, user: AuthenticatedUser) {
     const hasUpdate =
       input.categoryId !== undefined ||
       input.internalCode !== undefined ||
@@ -233,6 +247,8 @@ export class ProductsService {
       throw new NotFoundException('Produto não encontrado');
     }
 
+    this.ensureUserCanAccessStore(user, currentProduct.storeId);
+
     if (input.categoryId !== undefined) {
       await this.ensureCategoryBelongsToStore(
         input.categoryId,
@@ -263,8 +279,26 @@ export class ProductsService {
     return this.formatProduct(product);
   }
 
-  async updateStatus(id: string, input: UpdateProductStatusDto) {
-    await this.findById(id);
+  async updateStatus(
+    id: string,
+    input: UpdateProductStatusDto,
+    user: AuthenticatedUser
+  ) {
+    const currentProduct = await this.database.product.findUnique({
+      where: {
+        id
+      },
+      select: {
+        id: true,
+        storeId: true
+      }
+    });
+
+    if (!currentProduct) {
+      throw new NotFoundException('Produto não encontrado');
+    }
+
+    this.ensureUserCanAccessStore(user, currentProduct.storeId);
 
     const product = await this.database.product.update({
       where: {

@@ -6,9 +6,13 @@ import {
   Param,
   Patch,
   Post,
-  Query
+  Query,
+  UseGuards
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AuthenticatedUser } from '../auth/auth.types';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { apiListResponse, apiResponse } from '../common/api-response';
 import { ListByStoreQueryDto } from '../common/dto/list-by-store-query.dto';
 import {
@@ -33,9 +37,14 @@ export class CategoriesController {
   ) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Cria uma categoria' })
-  async create(@Body() body: CreateCategoryDto) {
-    const category = await this.categoriesService.create(body);
+  async create(
+    @Body() body: CreateCategoryDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const category = await this.categoriesService.create(body, user);
 
     return apiResponse(category);
   }
@@ -73,25 +82,36 @@ export class CategoriesController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Atualiza dados básicos de uma categoria' })
-  async update(@Param('id') id: string, @Body() body: UpdateCategoryDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateCategoryDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
     const category = await this.categoriesService.update(
       validateUuidParam(id, 'id'),
-      body
+      body,
+      user
     );
 
     return apiResponse(category);
   }
 
   @Patch(':id/status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Ativa ou desativa uma categoria' })
   async updateStatus(
     @Param('id') id: string,
-    @Body() body: UpdateCategoryStatusDto
+    @Body() body: UpdateCategoryStatusDto,
+    @CurrentUser() user: AuthenticatedUser
   ) {
     const category = await this.categoriesService.updateStatus(
       validateUuidParam(id, 'id'),
-      body
+      body,
+      user
     );
 
     return apiResponse(category);

@@ -3,6 +3,9 @@ set -euo pipefail
 
 API_BASE_URL="${API_BASE_URL:-http://localhost:53001}"
 STORE_ID="${SMOKE_STORE_ID:-00000000-0000-0000-0000-000000000001}"
+AUTH_EMAIL="${SMOKE_AUTH_EMAIL:-admin@retailflow.local}"
+AUTH_PASSWORD="${SMOKE_AUTH_PASSWORD:-Admin@123456}"
+AUTH_TOKEN=""
 
 cleanup_smoke_data() {
   echo
@@ -24,6 +27,7 @@ trap cleanup_smoke_data EXIT
 echo "== RetailFlow Pro API Smoke Test =="
 echo "API_BASE_URL=${API_BASE_URL}"
 echo "STORE_ID=${STORE_ID}"
+echo "AUTH_EMAIL=${AUTH_EMAIL}"
 echo
 
 request() {
@@ -66,13 +70,20 @@ json_request() {
 
   echo "Testing ${method} ${path}" >&2
 
+  local auth_args=()
+  if [ -n "$AUTH_TOKEN" ]; then
+    auth_args=(-H "Authorization: Bearer ${AUTH_TOKEN}")
+  fi
+
   local response
   if [ -n "$payload" ]; then
     response="$(curl -s -w '\n%{http_code}' -X "$method" "$url" \
       -H "Content-Type: application/json" \
+      "${auth_args[@]}" \
       -d "$payload")"
   else
-    response="$(curl -s -w '\n%{http_code}' -X "$method" "$url")"
+    response="$(curl -s -w '\n%{http_code}' -X "$method" "$url" \
+      "${auth_args[@]}")"
   fi
 
   local body
@@ -100,6 +111,20 @@ request GET "/api/v1/database/status" "200"
 request GET "/api/v1/stores?page=1&pageSize=10" "200"
 request GET "/api/v1/categories?page=1&pageSize=10" "200"
 request GET "/api/v1/products?page=1&pageSize=10&search=produto" "200"
+
+LOGIN_PAYLOAD="$(cat <<JSON
+{
+  "email": "${AUTH_EMAIL}",
+  "password": "${AUTH_PASSWORD}"
+}
+JSON
+)"
+
+LOGIN_RESPONSE="$(json_request POST "/api/v1/auth/login" "201" "$LOGIN_PAYLOAD")"
+
+AUTH_TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["accessToken"])')"
+
+json_request GET "/api/v1/auth/me" "200" "" >/dev/null
 
 SMOKE_SUFFIX="$(date +%s)"
 

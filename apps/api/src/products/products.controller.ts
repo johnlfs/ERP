@@ -6,9 +6,13 @@ import {
   Param,
   Patch,
   Post,
-  Query
+  Query,
+  UseGuards
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { AuthenticatedUser } from '../auth/auth.types';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { apiListResponse, apiResponse } from '../common/api-response';
 import { ListByStoreQueryDto } from '../common/dto/list-by-store-query.dto';
 import {
@@ -33,9 +37,14 @@ export class ProductsController {
   ) {}
 
   @Post()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Cria um produto' })
-  async create(@Body() body: CreateProductDto) {
-    const product = await this.productsService.create(body);
+  async create(
+    @Body() body: CreateProductDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const product = await this.productsService.create(body, user);
 
     return apiResponse(product);
   }
@@ -73,25 +82,36 @@ export class ProductsController {
   }
 
   @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Atualiza dados básicos de um produto' })
-  async update(@Param('id') id: string, @Body() body: UpdateProductDto) {
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateProductDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
     const product = await this.productsService.update(
       validateUuidParam(id, 'id'),
-      body
+      body,
+      user
     );
 
     return apiResponse(product);
   }
 
   @Patch(':id/status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Atualiza o status de um produto' })
   async updateStatus(
     @Param('id') id: string,
-    @Body() body: UpdateProductStatusDto
+    @Body() body: UpdateProductStatusDto,
+    @CurrentUser() user: AuthenticatedUser
   ) {
     const product = await this.productsService.updateStatus(
       validateUuidParam(id, 'id'),
-      body
+      body,
+      user
     );
 
     return apiResponse(product);
