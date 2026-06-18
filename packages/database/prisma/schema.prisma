@@ -75,6 +75,7 @@ model Store {
   updatedAt      DateTime        @updatedAt
   stockMovements StockMovement[]
   sales          Sale[]
+  customers      Customer[]
 
   @@map("stores")
 }
@@ -174,6 +175,7 @@ model Sale {
   id                 String        @id @default(uuid())
   storeId            String
   userId             String
+  customerId         String?
   status             SaleStatus    @default(COMPLETED)
   paymentMethod      PaymentMethod
   subtotal           Decimal       @db.Decimal(12, 2)
@@ -185,9 +187,10 @@ model Sale {
   canceledByUserId   String?
   cancellationReason String?
 
-  store      Store @relation(fields: [storeId], references: [id])
-  user       User  @relation("SaleCreatedBy", fields: [userId], references: [id])
-  canceledBy User? @relation("SaleCanceledBy", fields: [canceledByUserId], references: [id])
+  store      Store     @relation(fields: [storeId], references: [id])
+  user       User      @relation("SaleCreatedBy", fields: [userId], references: [id])
+  canceledBy User?     @relation("SaleCanceledBy", fields: [canceledByUserId], references: [id])
+  customer   Customer? @relation(fields: [customerId], references: [id])
 
   items          SaleItem[]
   stockMovements StockMovement[]
@@ -196,6 +199,7 @@ model Sale {
   updatedAt DateTime @updatedAt
 
   @@index([storeId, createdAt])
+  @@index([customerId, createdAt])
   @@index([userId, createdAt])
   @@index([canceledByUserId])
   @@map("sales")
@@ -219,4 +223,26 @@ model SaleItem {
   @@index([saleId])
   @@index([productId])
   @@map("sale_items")
+}
+
+model Customer {
+  id       String  @id @default(uuid())
+  storeId  String
+  name     String
+  document String?
+  email    String?
+  phone    String?
+  notes    String?
+  isActive Boolean @default(true)
+
+  store Store  @relation(fields: [storeId], references: [id])
+  sales Sale[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, document])
+  @@index([storeId, name])
+  @@index([storeId, isActive])
+  @@map("customers")
 }

@@ -26,6 +26,21 @@ async function main() {
     }
   };
 
+  const customerWhere = {
+    OR: [
+      {
+        name: {
+          startsWith: 'Smoke Cliente'
+        }
+      },
+      {
+        document: {
+          startsWith: 'SMOKE-DOC-'
+        }
+      }
+    ]
+  };
+
   const saleWhere = {
     OR: [
       {
@@ -85,6 +100,10 @@ async function main() {
     where: saleWhere
   });
 
+  const deletedCustomers = await prisma.customer.deleteMany({
+    where: customerWhere
+  });
+
   const deletedProducts = await prisma.product.deleteMany({
     where: productWhere
   });
@@ -100,6 +119,7 @@ async function main() {
         deletedStockMovements: deletedStockMovements.count,
         deletedSaleItems: deletedSaleItems.count,
         deletedSales: deletedSales.count,
+        deletedCustomers: deletedCustomers.count,
         deletedProducts: deletedProducts.count,
         deletedCategories: deletedCategories.count,
         includeTestData

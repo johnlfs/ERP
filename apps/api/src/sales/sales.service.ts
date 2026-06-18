@@ -41,6 +41,16 @@ const saleInclude = {
       email: true
     }
   },
+  customer: {
+    select: {
+      id: true,
+      name: true,
+      document: true,
+      email: true,
+      phone: true,
+      isActive: true
+    }
+  },
   items: {
     include: {
       product: {
@@ -102,6 +112,7 @@ export class SalesService {
       id: sale.id,
       storeId: sale.storeId,
       userId: sale.userId,
+      customerId: sale.customerId,
       status: sale.status,
       paymentMethod: sale.paymentMethod,
       subtotal: this.decimalToNumber(sale.subtotal),
@@ -115,6 +126,7 @@ export class SalesService {
       store: sale.store,
       user: sale.user,
       canceledBy: sale.canceledBy,
+      customer: sale.customer,
       items: sale.items.map((item) => ({
         id: item.id,
         saleId: item.saleId,
@@ -154,6 +166,45 @@ export class SalesService {
       throw new BadRequestException({
         code: 'SALE_ALREADY_CANCELED',
         message: 'Venda já está cancelada'
+      });
+    }
+  }
+
+  private async validateCustomerForSale(
+    tx: Prisma.TransactionClient,
+    storeId: string,
+    customerId?: string
+  ) {
+    if (!customerId) {
+      return;
+    }
+
+    const customer = await tx.customer.findUnique({
+      where: {
+        id: customerId
+      },
+      select: {
+        id: true,
+        storeId: true,
+        isActive: true
+      }
+    });
+
+    if (!customer) {
+      throw new NotFoundException('Cliente não encontrado');
+    }
+
+    if (customer.storeId !== storeId) {
+      throw new BadRequestException({
+        code: 'CUSTOMER_STORE_MISMATCH',
+        message: 'Cliente não pertence à loja informada'
+      });
+    }
+
+    if (!customer.isActive) {
+      throw new BadRequestException({
+        code: 'CUSTOMER_INACTIVE',
+        message: 'Cliente inativo não pode ser usado na venda'
       });
     }
   }
@@ -237,6 +288,8 @@ export class SalesService {
     const productIds = input.items.map((item) => item.productId);
 
     return this.database.$transaction(async (tx) => {
+      await this.validateCustomerForSale(tx, input.storeId, input.customerId);
+
       const products = await tx.product.findMany({
         where: {
           id: {
@@ -330,6 +383,7 @@ export class SalesService {
         data: {
           storeId: input.storeId,
           userId: user.id,
+          customerId: input.customerId,
           paymentMethod: input.paymentMethod,
           subtotal,
           discount: saleDiscount.plus(itemDiscountTotal),

@@ -91,6 +91,16 @@ export class CreateSaleDto {
   })
   storeId!: string;
 
+  @ApiPropertyOptional({
+    description: 'ID do cliente',
+    example: '00000000-0000-0000-0000-000000000001'
+  })
+  @IsOptional()
+  @Matches(UUID_LIKE_REGEX, {
+    message: 'customerId deve ter formato UUID válido'
+  })
+  customerId?: string;
+
   @ApiProperty({
     description: 'Forma de pagamento',
     enum: PaymentMethod,

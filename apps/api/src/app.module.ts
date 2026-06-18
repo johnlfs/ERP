@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
+import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { AppConfigModule } from './config/app-config.module';
-import { AuthModule } from './auth/auth.module';
+import { CustomersModule } from './customers/customers.module';
 import { DatabaseModule } from './database/database.module';
 import { ProductsModule } from './products/products.module';
 import { SalesModule } from './sales/sales.module';
@@ -15,10 +16,11 @@ import { StoresModule } from './stores/stores.module';
     AuthModule,
     DatabaseModule,
     StoresModule,
+    CategoriesModule,
+    CustomersModule,
     ProductsModule,
     SalesModule,
-    StockMovementsModule,
-    CategoriesModule
+    StockMovementsModule
   ],
   controllers: [AppController]
 })
