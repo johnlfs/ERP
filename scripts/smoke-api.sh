@@ -2,9 +2,11 @@
 set -euo pipefail
 
 API_BASE_URL="${API_BASE_URL:-http://localhost:53001}"
+STORE_ID="${SMOKE_STORE_ID:-00000000-0000-0000-0000-000000000001}"
 
 echo "== RetailFlow Pro API Smoke Test =="
 echo "API_BASE_URL=${API_BASE_URL}"
+echo "STORE_ID=${STORE_ID}"
 echo
 
 request() {
@@ -37,11 +39,111 @@ request() {
   echo
 }
 
+json_request() {
+  local method="$1"
+  local path="$2"
+  local expected_status="$3"
+  local payload="${4:-}"
+
+  local url="${API_BASE_URL}${path}"
+
+  echo "Testing ${method} ${path}" >&2
+
+  local response
+  if [ -n "$payload" ]; then
+    response="$(curl -s -w '\n%{http_code}' -X "$method" "$url" \
+      -H "Content-Type: application/json" \
+      -d "$payload")"
+  else
+    response="$(curl -s -w '\n%{http_code}' -X "$method" "$url")"
+  fi
+
+  local body
+  local status
+  body="$(printf '%s' "$response" | sed '$d')"
+  status="$(printf '%s' "$response" | tail -n 1)"
+
+  if [ "$status" != "$expected_status" ]; then
+    echo "FAIL ${method} ${path}" >&2
+    echo "Expected HTTP ${expected_status}, got HTTP ${status}" >&2
+    echo "Body:" >&2
+    echo "$body" >&2
+    exit 1
+  fi
+
+  echo "OK HTTP ${status}" >&2
+  echo "$body" | python3 -m json.tool >/dev/null 2>&1 || true
+  echo >&2
+
+  printf '%s' "$body"
+}
+
 request GET "/health" "200"
 request GET "/api/v1/database/status" "200"
 request GET "/api/v1/stores?page=1&pageSize=10" "200"
 request GET "/api/v1/categories?page=1&pageSize=10" "200"
 request GET "/api/v1/products?page=1&pageSize=10&search=produto" "200"
+
+SMOKE_SUFFIX="$(date +%s)"
+
+CATEGORY_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "name": "Smoke Categoria ${SMOKE_SUFFIX}"
+}
+JSON
+)"
+
+CATEGORY_RESPONSE="$(json_request POST "/api/v1/categories" "201" "$CATEGORY_PAYLOAD")"
+
+CATEGORY_ID="$(printf '%s' "$CATEGORY_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+PRODUCT_CODE="SMOKE-PROD-${SMOKE_SUFFIX}"
+PRODUCT_BARCODE="789${SMOKE_SUFFIX}"
+
+PRODUCT_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "categoryId": "${CATEGORY_ID}",
+  "internalCode": "${PRODUCT_CODE}",
+  "barcode": "${PRODUCT_BARCODE}",
+  "name": "Smoke Produto ${SMOKE_SUFFIX}",
+  "description": "Produto criado pelo smoke test",
+  "costPrice": 10,
+  "salePrice": 19.9,
+  "ncm": "00000000",
+  "unit": "UN",
+  "minStock": 1,
+  "currentStock": 5
+}
+JSON
+)"
+
+PRODUCT_RESPONSE="$(json_request POST "/api/v1/products" "201" "$PRODUCT_PAYLOAD")"
+
+PRODUCT_ID="$(printf '%s' "$PRODUCT_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+PRODUCT_UPDATE_PAYLOAD="$(cat <<JSON
+{
+  "name": "Smoke Produto ${SMOKE_SUFFIX} Atualizado",
+  "salePrice": 24.9,
+  "currentStock": 7
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/products/${PRODUCT_ID}" "200" "$PRODUCT_UPDATE_PAYLOAD" >/dev/null
+
+json_request PATCH "/api/v1/products/${PRODUCT_ID}/status" "200" '{
+  "status": "INACTIVE"
+}' >/dev/null
+
+json_request PATCH "/api/v1/products/${PRODUCT_ID}/status" "200" '{
+  "status": "ACTIVE"
+}' >/dev/null
+
+json_request PATCH "/api/v1/products/${PRODUCT_ID}" "400" '{}' >/dev/null
+
 request GET "/api/v1/products?page=abc" "400"
 request GET "/api/v1/products?storeId=abc" "400"
 request GET "/products" "404"

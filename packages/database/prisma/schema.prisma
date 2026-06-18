@@ -24,92 +24,92 @@ enum ProductStatus {
 }
 
 model User {
-  id           String      @id @default(uuid())
+  id           String  @id @default(uuid())
   name         String
-  email        String      @unique
+  email        String  @unique
   passwordHash String
-  isActive     Boolean     @default(true)
+  isActive     Boolean @default(true)
 
-  stores       StoreUser[]
+  stores StoreUser[]
 
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("users")
 }
 
 model Store {
-  id          String      @id @default(uuid())
-  name        String
-  document    String?
-  tradeName   String?
-  isActive    Boolean     @default(true)
+  id        String  @id @default(uuid())
+  name      String
+  document  String?
+  tradeName String?
+  isActive  Boolean @default(true)
 
-  users       StoreUser[]
-  categories  Category[]
-  products    Product[]
+  users      StoreUser[]
+  categories Category[]
+  products   Product[]
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("stores")
 }
 
 model StoreUser {
-  id        String          @id @default(uuid())
-  userId    String
-  storeId   String
-  role      UserRole
-  status    StoreUserStatus @default(ACTIVE)
+  id      String          @id @default(uuid())
+  userId  String
+  storeId String
+  role    UserRole
+  status  StoreUserStatus @default(ACTIVE)
 
-  user      User            @relation(fields: [userId], references: [id])
-  store     Store           @relation(fields: [storeId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+  store Store @relation(fields: [storeId], references: [id])
 
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([userId, storeId])
   @@map("store_users")
 }
 
 model Category {
-  id        String    @id @default(uuid())
-  storeId   String
-  name      String
-  isActive  Boolean   @default(true)
+  id       String  @id @default(uuid())
+  storeId  String
+  name     String
+  isActive Boolean @default(true)
 
-  store     Store     @relation(fields: [storeId], references: [id])
-  products  Product[]
+  store    Store     @relation(fields: [storeId], references: [id])
+  products Product[]
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([storeId, name])
   @@map("categories")
 }
 
 model Product {
-  id            String        @id @default(uuid())
-  storeId       String
-  categoryId    String?
+  id         String @id @default(uuid())
+  storeId    String
+  categoryId String
 
-  internalCode  String
-  barcode       String?
-  name          String
-  description   String?
-  costPrice     Decimal       @db.Decimal(12, 2)
-  salePrice     Decimal       @db.Decimal(12, 2)
-  ncm           String?
-  unit          String        @default("UN")
-  status        ProductStatus @default(ACTIVE)
-  minStock      Decimal       @default(0) @db.Decimal(12, 3)
-  currentStock  Decimal       @default(0) @db.Decimal(12, 3)
+  internalCode String
+  barcode      String?
+  name         String
+  description  String?
+  costPrice    Decimal       @db.Decimal(12, 2)
+  salePrice    Decimal       @db.Decimal(12, 2)
+  ncm          String?
+  unit         String        @default("UN")
+  status       ProductStatus @default(ACTIVE)
+  minStock     Decimal       @default(0) @db.Decimal(12, 3)
+  currentStock Decimal       @default(0) @db.Decimal(12, 3)
 
-  store         Store         @relation(fields: [storeId], references: [id])
-  category      Category?     @relation(fields: [categoryId], references: [id])
+  store    Store    @relation(fields: [storeId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
 
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([storeId, internalCode])
   @@index([storeId, barcode])
