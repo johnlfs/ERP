@@ -76,6 +76,7 @@ model Store {
   stockMovements StockMovement[]
   sales          Sale[]
   customers      Customer[]
+  suppliers      Supplier[]
 
   @@map("stores")
 }
@@ -245,4 +246,26 @@ model Customer {
   @@index([storeId, name])
   @@index([storeId, isActive])
   @@map("customers")
+}
+
+model Supplier {
+  id          String  @id @default(uuid())
+  storeId     String
+  name        String
+  document    String?
+  email       String?
+  phone       String?
+  contactName String?
+  notes       String?
+  isActive    Boolean @default(true)
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, document])
+  @@index([storeId, name])
+  @@index([storeId, isActive])
+  @@map("suppliers")
 }

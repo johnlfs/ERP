@@ -114,6 +114,7 @@ request GET "/api/v1/products?page=1&pageSize=10&search=produto" "200"
 request GET "/api/v1/stock-movements?page=1&pageSize=10" "401"
 request GET "/api/v1/sales?page=1&pageSize=10" "401"
 request GET "/api/v1/customers?page=1&pageSize=10" "401"
+request GET "/api/v1/suppliers?page=1&pageSize=10" "401"
 
 UNAUTHORIZED_CATEGORY_PAYLOAD="$(cat <<JSON
 {
@@ -186,6 +187,17 @@ JSON
 )"
 
 json_request POST "/api/v1/customers" "401" "$UNAUTHORIZED_CUSTOMER_PAYLOAD" >/dev/null
+
+UNAUTHORIZED_SUPPLIER_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "name": "Smoke Fornecedor Não Autorizado"
+}
+JSON
+)"
+
+json_request POST "/api/v1/suppliers" "401" "$UNAUTHORIZED_SUPPLIER_PAYLOAD" >/dev/null
+
 
 
 request PATCH "/api/v1/sales/00000000-0000-0000-0000-000000000001/cancel" "401"
@@ -336,6 +348,61 @@ JSON
 json_request PATCH "/api/v1/customers/${CUSTOMER_ID}/status" "200" "$CUSTOMER_ACTIVE_PAYLOAD" >/dev/null
 
 json_request PATCH "/api/v1/customers/${CUSTOMER_ID}" "400" "{}" >/dev/null
+
+SUPPLIER_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "name": "Smoke Fornecedor ${SMOKE_SUFFIX}",
+  "document": "SMOKE-SUP-DOC-${SMOKE_SUFFIX}",
+  "email": "supplier.${SMOKE_SUFFIX}@example.com",
+  "phone": "+5544999999999",
+  "contactName": "Contato Smoke",
+  "notes": "Fornecedor criado pelo smoke test"
+}
+JSON
+)"
+
+SUPPLIER_RESPONSE="$(json_request POST "/api/v1/suppliers" "201" "$SUPPLIER_PAYLOAD")"
+
+json_request POST "/api/v1/suppliers" "409" "$SUPPLIER_PAYLOAD" >/dev/null
+
+SUPPLIER_ID="$(printf '%s' "$SUPPLIER_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+json_request GET "/api/v1/suppliers?page=1&pageSize=10&search=Smoke" "200" "" >/dev/null
+json_request GET "/api/v1/suppliers/${SUPPLIER_ID}" "200" "" >/dev/null
+
+UPDATE_SUPPLIER_PAYLOAD="$(cat <<JSON
+{
+  "name": "Smoke Fornecedor Atualizado ${SMOKE_SUFFIX}",
+  "phone": "+5544888888888",
+  "contactName": "Contato Smoke Atualizado"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/suppliers/${SUPPLIER_ID}" "200" "$UPDATE_SUPPLIER_PAYLOAD" >/dev/null
+
+SUPPLIER_INACTIVE_PAYLOAD="$(cat <<JSON
+{
+  "isActive": false
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/suppliers/${SUPPLIER_ID}/status" "200" "$SUPPLIER_INACTIVE_PAYLOAD" >/dev/null
+
+SUPPLIER_ACTIVE_PAYLOAD="$(cat <<JSON
+{
+  "isActive": true
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/suppliers/${SUPPLIER_ID}/status" "200" "$SUPPLIER_ACTIVE_PAYLOAD" >/dev/null
+
+json_request PATCH "/api/v1/suppliers/${SUPPLIER_ID}" "400" "{}" >/dev/null
+
+
 
 PRODUCT_UPDATE_PAYLOAD="$(cat <<JSON
 {
