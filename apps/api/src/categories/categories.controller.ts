@@ -10,9 +10,12 @@ import {
   UseGuards
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { apiListResponse, apiResponse } from '../common/api-response';
 import { ListByStoreQueryDto } from '../common/dto/list-by-store-query.dto';
 import {
@@ -37,7 +40,8 @@ export class CategoriesController {
   ) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cria uma categoria' })
   async create(
@@ -82,7 +86,8 @@ export class CategoriesController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Atualiza dados básicos de uma categoria' })
   async update(
@@ -100,7 +105,8 @@ export class CategoriesController {
   }
 
   @Patch(':id/status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Ativa ou desativa uma categoria' })
   async updateStatus(

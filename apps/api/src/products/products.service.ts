@@ -1,12 +1,12 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { ensureUserCanWriteStore } from '../auth/store-access';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -68,17 +68,6 @@ export class ProductsService {
       createdAt: product.createdAt,
       updatedAt: product.updatedAt
     };
-  }
-
-  private ensureUserCanAccessStore(user: AuthenticatedUser, storeId: string) {
-    const hasAccess = user.stores.some((store) => store.id === storeId);
-
-    if (!hasAccess) {
-      throw new ForbiddenException({
-        code: 'STORE_ACCESS_DENIED',
-        message: 'Usuário não possui acesso à loja informada'
-      });
-    }
   }
 
   private async ensureStoreExists(storeId: string) {
@@ -188,7 +177,7 @@ export class ProductsService {
 
   async create(input: CreateProductDto, user: AuthenticatedUser) {
     await this.ensureStoreExists(input.storeId);
-    this.ensureUserCanAccessStore(user, input.storeId);
+    ensureUserCanWriteStore(user, input.storeId);
     await this.ensureCategoryBelongsToStore(input.categoryId, input.storeId);
 
     const product = await this.database.product.create({
@@ -247,7 +236,7 @@ export class ProductsService {
       throw new NotFoundException('Produto não encontrado');
     }
 
-    this.ensureUserCanAccessStore(user, currentProduct.storeId);
+    ensureUserCanWriteStore(user, currentProduct.storeId);
 
     if (input.categoryId !== undefined) {
       await this.ensureCategoryBelongsToStore(
@@ -298,7 +287,7 @@ export class ProductsService {
       throw new NotFoundException('Produto não encontrado');
     }
 
-    this.ensureUserCanAccessStore(user, currentProduct.storeId);
+    ensureUserCanWriteStore(user, currentProduct.storeId);
 
     const product = await this.database.product.update({
       where: {

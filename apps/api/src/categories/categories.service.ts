@@ -1,12 +1,12 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { ensureUserCanWriteStore } from '../auth/store-access';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -56,17 +56,6 @@ export class CategoriesService {
       createdAt: category.createdAt,
       updatedAt: category.updatedAt
     };
-  }
-
-  private ensureUserCanAccessStore(user: AuthenticatedUser, storeId: string) {
-    const hasAccess = user.stores.some((store) => store.id === storeId);
-
-    if (!hasAccess) {
-      throw new ForbiddenException({
-        code: 'STORE_ACCESS_DENIED',
-        message: 'Usuário não possui acesso à loja informada'
-      });
-    }
   }
 
   private async ensureStoreExists(storeId: string) {
@@ -163,7 +152,7 @@ export class CategoriesService {
 
   async create(input: CreateCategoryDto, user: AuthenticatedUser) {
     await this.ensureStoreExists(input.storeId);
-    this.ensureUserCanAccessStore(user, input.storeId);
+    ensureUserCanWriteStore(user, input.storeId);
 
     const category = await this.database.category.create({
       data: {
@@ -211,7 +200,7 @@ export class CategoriesService {
       throw new NotFoundException('Categoria não encontrada');
     }
 
-    this.ensureUserCanAccessStore(user, currentCategory.storeId);
+    ensureUserCanWriteStore(user, currentCategory.storeId);
 
     const category = await this.database.category.update({
       where: {
@@ -258,7 +247,7 @@ export class CategoriesService {
       throw new NotFoundException('Categoria não encontrada');
     }
 
-    this.ensureUserCanAccessStore(user, currentCategory.storeId);
+    ensureUserCanWriteStore(user, currentCategory.storeId);
 
     const category = await this.database.category.update({
       where: {

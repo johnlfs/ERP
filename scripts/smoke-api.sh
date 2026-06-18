@@ -112,6 +112,16 @@ request GET "/api/v1/stores?page=1&pageSize=10" "200"
 request GET "/api/v1/categories?page=1&pageSize=10" "200"
 request GET "/api/v1/products?page=1&pageSize=10&search=produto" "200"
 
+UNAUTHORIZED_CATEGORY_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "name": "Smoke Categoria Sem Token"
+}
+JSON
+)"
+
+json_request POST "/api/v1/categories" "401" "$UNAUTHORIZED_CATEGORY_PAYLOAD" >/dev/null
+
 LOGIN_PAYLOAD="$(cat <<JSON
 {
   "email": "${AUTH_EMAIL}",
