@@ -26,6 +26,7 @@ import { StockMovementsService } from './stock-movements.service';
 @ApiTags('stock-movements')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
 @Controller('stock-movements')
 export class StockMovementsController {
   constructor(
@@ -34,7 +35,6 @@ export class StockMovementsController {
   ) {}
 
   @Get()
-  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Lista movimentações de estoque' })
   async findAll(
     @Query() query: ListStockMovementsQueryDto,
@@ -45,6 +45,7 @@ export class StockMovementsController {
     const result = await this.stockMovementsService.findAll({
       storeId: query.storeId,
       productId: query.productId,
+      saleId: query.saleId,
       type: query.type,
       pagination,
       user
@@ -55,20 +56,20 @@ export class StockMovementsController {
       createPaginationMeta(result.total, result.data.length, pagination, {
         storeId: query.storeId ?? null,
         productId: query.productId ?? null,
+        saleId: query.saleId ?? null,
         type: query.type ?? null
       })
     );
   }
 
   @Post()
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Cria movimentação de estoque' })
+  @ApiOperation({ summary: 'Cria movimentação manual de estoque' })
   async create(
     @Body() body: CreateStockMovementDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    const movement = await this.stockMovementsService.create(body, user);
+    const stockMovement = await this.stockMovementsService.create(body, user);
 
-    return apiResponse(movement);
+    return apiResponse(stockMovement);
   }
 }

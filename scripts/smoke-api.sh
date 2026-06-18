@@ -157,6 +157,26 @@ JSON
 
 json_request POST "/api/v1/stock-movements" "401" "$UNAUTHORIZED_STOCK_PAYLOAD" >/dev/null
 
+UNAUTHORIZED_SALE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "paymentMethod": "PIX",
+  "items": [
+    {
+      "productId": "${STORE_ID}",
+      "quantity": 1,
+      "unitPrice": 1,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+json_request POST "/api/v1/sales" "401" "$UNAUTHORIZED_SALE_PAYLOAD" >/dev/null
+
+
 LOGIN_PAYLOAD="$(cat <<JSON
 {
   "email": "${AUTH_EMAIL}",
@@ -301,6 +321,37 @@ JSON
 SALE_RESPONSE="$(json_request POST "/api/v1/sales" "201" "$SALE_PAYLOAD")"
 
 SALE_ID="$(printf '%s' "$SALE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+SALE_MOVEMENTS_RESPONSE="$(json_request GET "/api/v1/stock-movements?saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
+
+SALE_ID="$SALE_ID" SALE_MOVEMENTS_RESPONSE="$SALE_MOVEMENTS_RESPONSE" python3 - <<'PYVALIDATION'
+import json
+import os
+
+sale_id = os.environ["SALE_ID"]
+payload = json.loads(os.environ["SALE_MOVEMENTS_RESPONSE"])
+data = payload["data"]
+
+assert len(data) >= 1, "Venda não gerou movimentação de estoque"
+
+movement = data[0]
+
+assert movement["saleId"] == sale_id, (
+    f"saleId da movimentação diferente da venda: {movement.get('saleId')} != {sale_id}"
+)
+
+assert movement["type"] == "OUT", (
+    f"Movimentação da venda deveria ser OUT, veio {movement.get('type')}"
+)
+
+assert float(movement["quantity"]) == 2.0, (
+    f"Quantidade da movimentação da venda deveria ser 2, veio {movement.get('quantity')}"
+)
+PYVALIDATION
+
+PRODUCT_AFTER_SALE_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
+
+printf '%s' "$PRODUCT_AFTER_SALE_RESPONSE" | python3 -c 'import sys,json; payload=json.load(sys.stdin); current=float(payload["data"]["currentStock"]); assert current == 12.0, f"Estoque final esperado após venda era 12, veio {current}"'
 
 json_request GET "/api/v1/sales?page=1&pageSize=10" "200" "" >/dev/null
 json_request GET "/api/v1/sales/${SALE_ID}" "200" "" >/dev/null

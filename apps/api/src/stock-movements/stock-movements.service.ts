@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException
@@ -44,6 +45,7 @@ type StockMovementWithRelations = Prisma.StockMovementGetPayload<{
 type FindAllStockMovementsParams = {
   storeId?: string;
   productId?: string;
+  saleId?: string;
   type?: StockMovementType;
   pagination: ParsedPagination;
   user: AuthenticatedUser;
@@ -60,30 +62,42 @@ export class StockMovementsService {
     return Number(value);
   }
 
-  private formatMovement(movement: StockMovementWithRelations) {
+  private formatStockMovement(stockMovement: StockMovementWithRelations) {
     return {
-      id: movement.id,
-      storeId: movement.storeId,
-      productId: movement.productId,
-      userId: movement.userId,
-      type: movement.type,
-      quantity: this.decimalToNumber(movement.quantity),
-      beforeStock: this.decimalToNumber(movement.beforeStock),
-      afterStock: this.decimalToNumber(movement.afterStock),
-      reason: movement.reason,
-      document: movement.document,
-      store: movement.store,
+      id: stockMovement.id,
+      storeId: stockMovement.storeId,
+      productId: stockMovement.productId,
+      userId: stockMovement.userId,
+      saleId: stockMovement.saleId,
+      type: stockMovement.type,
+      quantity: this.decimalToNumber(stockMovement.quantity),
+      beforeStock: this.decimalToNumber(stockMovement.beforeStock),
+      afterStock: this.decimalToNumber(stockMovement.afterStock),
+      reason: stockMovement.reason,
+      document: stockMovement.document,
+      store: stockMovement.store,
       product: {
-        ...movement.product,
-        currentStock: this.decimalToNumber(movement.product.currentStock)
+        ...stockMovement.product,
+        currentStock: this.decimalToNumber(stockMovement.product.currentStock)
       },
-      user: movement.user,
-      createdAt: movement.createdAt
+      user: stockMovement.user,
+      createdAt: stockMovement.createdAt
     };
   }
 
   private getAllowedStoreIds(user: AuthenticatedUser) {
     return user.stores.map((store) => store.id);
+  }
+
+  private ensureUserCanReadStore(user: AuthenticatedUser, storeId: string) {
+    const hasAccess = user.stores.some((store) => store.id === storeId);
+
+    if (!hasAccess) {
+      throw new ForbiddenException({
+        code: 'STORE_ACCESS_DENIED',
+        message: 'Usuário não possui acesso à loja informada'
+      });
+    }
   }
 
   async findAll(params: FindAllStockMovementsParams) {
@@ -96,11 +110,8 @@ export class StockMovementsService {
       };
     }
 
-    if (params.storeId && !allowedStoreIds.includes(params.storeId)) {
-      throw new BadRequestException({
-        code: 'STORE_ACCESS_DENIED',
-        message: 'Usuário não possui acesso à loja informada'
-      });
+    if (params.storeId) {
+      this.ensureUserCanReadStore(params.user, params.storeId);
     }
 
     const where: Prisma.StockMovementWhereInput = {
@@ -110,10 +121,11 @@ export class StockMovementsService {
             in: allowedStoreIds
           },
       ...(params.productId ? { productId: params.productId } : {}),
+      ...(params.saleId ? { saleId: params.saleId } : {}),
       ...(params.type ? { type: params.type } : {})
     };
 
-    const [total, movements] = await this.database.$transaction([
+    const [total, stockMovements] = await this.database.$transaction([
       this.database.stockMovement.count({
         where
       }),
@@ -130,14 +142,14 @@ export class StockMovementsService {
 
     return {
       total,
-      data: movements.map((movement) => this.formatMovement(movement))
+      data: stockMovements.map((stockMovement) =>
+        this.formatStockMovement(stockMovement)
+      )
     };
   }
 
   async create(input: CreateStockMovementDto, user: AuthenticatedUser) {
     ensureUserCanWriteStore(user, input.storeId);
-
-    const quantity = new Prisma.Decimal(input.quantity);
 
     return this.database.$transaction(async (tx) => {
       const product = await tx.product.findUnique({
@@ -146,6 +158,7 @@ export class StockMovementsService {
         },
         select: {
           id: true,
+          name: true,
           storeId: true,
           currentStock: true
         }
@@ -163,6 +176,8 @@ export class StockMovementsService {
       }
 
       const beforeStock = new Prisma.Decimal(product.currentStock);
+      const quantity = new Prisma.Decimal(input.quantity);
+
       let afterStock: Prisma.Decimal;
 
       if (input.type === StockMovementType.IN) {
@@ -173,14 +188,14 @@ export class StockMovementsService {
         if (afterStock.lessThan(0)) {
           throw new BadRequestException({
             code: 'INSUFFICIENT_STOCK',
-            message: 'Estoque insuficiente para saída'
+            message: 'Estoque insuficiente para realizar a saída'
           });
         }
       } else {
         afterStock = quantity;
       }
 
-      const movement = await tx.stockMovement.create({
+      const stockMovement = await tx.stockMovement.create({
         data: {
           storeId: input.storeId,
           productId: input.productId,
@@ -204,7 +219,7 @@ export class StockMovementsService {
         }
       });
 
-      return this.formatMovement(movement);
+      return this.formatStockMovement(stockMovement);
     });
   }
 }

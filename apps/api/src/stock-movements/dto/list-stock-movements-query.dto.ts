@@ -28,6 +28,16 @@ export class ListStockMovementsQueryDto extends ListQueryDto {
   productId?: string;
 
   @ApiPropertyOptional({
+    description: 'Filtra por venda',
+    example: '00000000-0000-0000-0000-000000000001'
+  })
+  @IsOptional()
+  @Matches(UUID_LIKE_REGEX, {
+    message: 'saleId deve ter formato UUID válido'
+  })
+  saleId?: string;
+
+  @ApiPropertyOptional({
     description: 'Filtra por tipo de movimentação',
     enum: StockMovementType,
     example: StockMovementType.IN
