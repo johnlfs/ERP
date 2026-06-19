@@ -7,8 +7,10 @@ import {
 } from '@nestjs/common';
 import { AccountReceivableStatus, Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { ensureUserCanWriteStore } from '../auth/store-access';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
+import { ReceiveAccountReceivableDto } from './dto/receive-account-receivable.dto';
 
 const accountReceivableInclude = {
   store: {
@@ -117,6 +119,55 @@ export class AccountsReceivableService {
         message
       });
     }
+  }
+
+
+  private ensureAccountCanBeReceived(accountReceivable: { status: AccountReceivableStatus }) {
+    if (accountReceivable.status === AccountReceivableStatus.RECEIVED) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_RECEIVABLE_ALREADY_RECEIVED',
+        message: 'Conta a receber já foi recebida'
+      });
+    }
+
+    if (accountReceivable.status === AccountReceivableStatus.CANCELED) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_RECEIVABLE_CANCELED',
+        message: 'Conta a receber cancelada não pode ser recebida'
+      });
+    }
+  }
+
+  private resolveReceivedAmount(
+    accountAmount: Prisma.Decimal,
+    receivedAmount?: number
+  ) {
+    const resolvedReceivedAmount = receivedAmount === undefined
+      ? new Prisma.Decimal(accountAmount)
+      : new Prisma.Decimal(receivedAmount);
+
+    if (resolvedReceivedAmount.lte(0)) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_RECEIVABLE_INVALID_RECEIVED_AMOUNT',
+        message: 'receivedAmount deve ser maior que zero'
+      });
+    }
+
+    if (resolvedReceivedAmount.gt(accountAmount)) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_RECEIVABLE_RECEIVED_AMOUNT_EXCEEDS_AMOUNT',
+        message: 'receivedAmount não pode ser maior que o valor da conta a receber'
+      });
+    }
+
+    if (resolvedReceivedAmount.lt(accountAmount)) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_RECEIVABLE_PARTIAL_RECEIPT_NOT_SUPPORTED',
+        message: 'Nesta fase, apenas recebimento total da conta a receber é permitido'
+      });
+    }
+
+    return resolvedReceivedAmount;
   }
 
   private formatAccountReceivable(accountReceivable: AccountReceivableWithRelations) {
@@ -301,5 +352,66 @@ export class AccountsReceivableService {
     this.ensureUserCanReadStore(user, accountReceivable.storeId);
 
     return this.formatAccountReceivable(accountReceivable);
+  }
+
+  async receive(
+    id: string,
+    input: ReceiveAccountReceivableDto,
+    user: AuthenticatedUser
+  ) {
+    return this.database.$transaction(async (tx) => {
+      const accountReceivable = await tx.accountReceivable.findUnique({
+        where: {
+          id
+        },
+        select: {
+          id: true,
+          storeId: true,
+          status: true,
+          amount: true
+        }
+      });
+
+      if (!accountReceivable) {
+        throw new NotFoundException('Conta a receber não encontrada');
+      }
+
+      ensureUserCanWriteStore(user, accountReceivable.storeId);
+      this.ensureAccountCanBeReceived(accountReceivable);
+
+      const receivedAmount = this.resolveReceivedAmount(
+        accountReceivable.amount,
+        input.receivedAmount
+      );
+
+      const receivedAt = input.receivedAt ? new Date(input.receivedAt) : new Date();
+
+      await tx.accountReceivable.update({
+        where: {
+          id: accountReceivable.id
+        },
+        data: {
+          status: AccountReceivableStatus.RECEIVED,
+          receivedAt,
+          receivedByUserId: user.id,
+          receivedAmount,
+          receiptMethod: input.receiptMethod.trim(),
+          receiptNotes: input.receiptNotes?.trim()
+        }
+      });
+
+      const receivedAccountReceivable = await tx.accountReceivable.findUnique({
+        where: {
+          id: accountReceivable.id
+        },
+        include: accountReceivableInclude
+      });
+
+      if (!receivedAccountReceivable) {
+        throw new NotFoundException('Conta a receber não encontrada após recebimento');
+      }
+
+      return this.formatAccountReceivable(receivedAccountReceivable);
+    });
   }
 }

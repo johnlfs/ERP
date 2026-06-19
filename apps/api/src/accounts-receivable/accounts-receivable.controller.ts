@@ -1,4 +1,13 @@
-import { Controller, Get, Inject, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Query,
+  UseGuards
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
@@ -14,6 +23,7 @@ import {
 import { validateUuidParam } from '../common/validation';
 import { AccountsReceivableService } from './accounts-receivable.service';
 import { ListAccountsReceivableQueryDto } from './dto/list-accounts-receivable-query.dto';
+import { ReceiveAccountReceivableDto } from './dto/receive-account-receivable.dto';
 
 @ApiTags('accounts-receivable')
 @ApiBearerAuth()
@@ -72,6 +82,22 @@ export class AccountsReceivableController {
   ) {
     const accountReceivable = await this.accountsReceivableService.findById(
       validateUuidParam(id, 'id'),
+      user
+    );
+
+    return apiResponse(accountReceivable);
+  }
+
+  @Patch(':id/receive')
+  @ApiOperation({ summary: 'Realiza recebimento total de uma conta a receber' })
+  async receive(
+    @Param('id') id: string,
+    @Body() body: ReceiveAccountReceivableDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const accountReceivable = await this.accountsReceivableService.receive(
+      validateUuidParam(id, 'id'),
+      body,
       user
     );
 

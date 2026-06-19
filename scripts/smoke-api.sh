@@ -227,6 +227,7 @@ json_request POST "/api/v1/purchases" "401" "$UNAUTHORIZED_PURCHASE_PAYLOAD" >/d
 request PATCH "/api/v1/sales/00000000-0000-0000-0000-000000000001/cancel" "401"
 request PATCH "/api/v1/purchases/00000000-0000-0000-0000-000000000001/cancel" "401"
 request PATCH "/api/v1/accounts-payable/00000000-0000-0000-0000-000000000001/pay" "401"
+request PATCH "/api/v1/accounts-receivable/00000000-0000-0000-0000-000000000001/receive" "401"
 request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000000001" "401"
 request GET "/api/v1/stock-audit/stores/${STORE_ID}/summary" "401"
 request GET "/api/v1/financial-audit/stores/${STORE_ID}/summary" "401"
@@ -263,6 +264,33 @@ json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&receivedAtFrom=
 json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&dueDateFrom=2030-02-01T00:00:00.000Z&dueDateTo=2030-01-01T00:00:00.000Z" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&receivedAtFrom=2030-04-01T00:00:00.000Z&receivedAtTo=2030-03-01T00:00:00.000Z" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-receivable/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
+
+RECEIVE_ACCOUNT_RECEIVABLE_NOT_FOUND_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "PIX"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-receivable/00000000-0000-0000-0000-000000009999/receive" "404" "$RECEIVE_ACCOUNT_RECEIVABLE_NOT_FOUND_PAYLOAD" >/dev/null
+
+RECEIVE_ACCOUNT_RECEIVABLE_INVALID_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": ""
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-receivable/00000000-0000-0000-0000-000000009999/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_INVALID_PAYLOAD" >/dev/null
+
+RECEIVE_ACCOUNT_RECEIVABLE_INVALID_METHOD_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "CHEQUE"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-receivable/00000000-0000-0000-0000-000000009999/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_INVALID_METHOD_PAYLOAD" >/dev/null
 
 PAY_ACCOUNT_PAYABLE_NOT_FOUND_PAYLOAD="$(cat <<JSON
 {
@@ -930,6 +958,17 @@ PYVALIDATION
 
 json_request PATCH "/api/v1/sales/${SALE_ID}/cancel" "400" "$CANCEL_SALE_PAYLOAD" >/dev/null
 
+RECEIVE_CANCELED_ACCOUNT_RECEIVABLE_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "PIX",
+  "receivedAt": "2030-05-02T12:00:00.000Z",
+  "receiptNotes": "Tentativa de receber conta cancelada pelo smoke test"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-receivable/${ACCOUNT_RECEIVABLE_ID}/receive" "400" "$RECEIVE_CANCELED_ACCOUNT_RECEIVABLE_PAYLOAD" >/dev/null
+
 SALE_TOO_MUCH_PAYLOAD="$(cat <<JSON
 {
   "storeId": "${STORE_ID}",
@@ -1514,15 +1553,187 @@ PYVALIDATION
 json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_PAYLOAD" >/dev/null
 json_request PATCH "/api/v1/purchases/${PAID_PURCHASE_ID}/cancel" "400" "$CANCEL_PURCHASE_PAYLOAD" >/dev/null
 
+RECEIVED_SALE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "customerId": "${CUSTOMER_ID}",
+  "paymentMethod": "PIX",
+  "document": "SMOKE-RECEIVED-SALE-${SMOKE_SUFFIX}",
+  "dueDate": "2030-05-01T00:00:00.000Z",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitPrice": 17.5,
+      "discount": 0
+    }
+  ],
+  "discount": 0,
+  "notes": "Venda para recebimento smoke"
+}
+JSON
+)"
+
+RECEIVED_SALE_RESPONSE="$(json_request POST "/api/v1/sales" "201" "$RECEIVED_SALE_PAYLOAD")"
+RECEIVED_SALE_ID="$(printf '%s' "$RECEIVED_SALE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+RECEIVED_ACCOUNT_RECEIVABLE_ID="$(printf '%s' "$RECEIVED_SALE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["accountReceivable"]["id"])')"
+
+RECEIVE_ACCOUNT_RECEIVABLE_PARTIAL_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "PIX",
+  "receivedAmount": 1,
+  "receivedAt": "2030-05-02T12:00:00.000Z",
+  "receiptNotes": "Tentativa de recebimento parcial pelo smoke test"
+}
+JSON
+)"
+
+RECEIVE_ACCOUNT_RECEIVABLE_ZERO_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "PIX",
+  "receivedAmount": 0,
+  "receivedAt": "2030-05-02T12:00:00.000Z",
+  "receiptNotes": "Tentativa de recebimento zero pelo smoke test"
+}
+JSON
+)"
+
+RECEIVE_ACCOUNT_RECEIVABLE_NEGATIVE_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "PIX",
+  "receivedAmount": -1,
+  "receivedAt": "2030-05-02T12:00:00.000Z",
+  "receiptNotes": "Tentativa de recebimento negativo pelo smoke test"
+}
+JSON
+)"
+
+RECEIVE_ACCOUNT_RECEIVABLE_GREATER_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "PIX",
+  "receivedAmount": 999999,
+  "receivedAt": "2030-05-02T12:00:00.000Z",
+  "receiptNotes": "Tentativa de recebimento acima do valor pelo smoke test"
+}
+JSON
+)"
+
+RECEIVE_ACCOUNT_RECEIVABLE_INVALID_EXISTING_METHOD_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "CHEQUE",
+  "receivedAt": "2030-05-02T12:00:00.000Z",
+  "receiptNotes": "Tentativa com método inválido pelo smoke test"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_PARTIAL_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_ZERO_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_NEGATIVE_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_GREATER_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_INVALID_EXISTING_METHOD_PAYLOAD" >/dev/null
+
+RECEIVE_ACCOUNT_RECEIVABLE_PAYLOAD="$(cat <<JSON
+{
+  "receiptMethod": "PIX",
+  "receivedAt": "2030-05-02T12:00:00.000Z",
+  "receiptNotes": "Recebimento realizado pelo smoke test"
+}
+JSON
+)"
+
+RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE="$(json_request PATCH "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}/receive" "200" "$RECEIVE_ACCOUNT_RECEIVABLE_PAYLOAD")"
+RECEIVED_ACCOUNT_RECEIVABLE_BY_ID_RESPONSE="$(json_request GET "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}" "200" "" )"
+RECEIVED_ACCOUNT_RECEIVABLE_BY_STATUS_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?status=RECEIVED&saleId=${RECEIVED_SALE_ID}&page=1&pageSize=10" "200" "" )"
+RECEIVED_ACCOUNT_RECEIVABLE_OPEN_AFTER_RECEIVE_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?status=OPEN&saleId=${RECEIVED_SALE_ID}&page=1&pageSize=10" "200" "" )"
+RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?search=PIX&saleId=${RECEIVED_SALE_ID}&page=1&pageSize=10" "200" "" )"
+RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?receivedAtFrom=2030-05-02T00:00:00.000Z&receivedAtTo=2030-05-03T00:00:00.000Z&saleId=${RECEIVED_SALE_ID}&page=1&pageSize=10" "200" "" )"
+RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?receivedAtFrom=2030-05-03T00:00:00.000Z&receivedAtTo=2030-05-04T00:00:00.000Z&saleId=${RECEIVED_SALE_ID}&page=1&pageSize=10" "200" "" )"
+RECEIVED_SALE_AFTER_RECEIVE_RESPONSE="$(json_request GET "/api/v1/sales/${RECEIVED_SALE_ID}" "200" "" )"
+
+RECEIVED_SALE_RESPONSE="$RECEIVED_SALE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_ID_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_ID_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_STATUS_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_STATUS_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_OPEN_AFTER_RECEIVE_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_OPEN_AFTER_RECEIVE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE" RECEIVED_SALE_AFTER_RECEIVE_RESPONSE="$RECEIVED_SALE_AFTER_RECEIVE_RESPONSE" RECEIVED_SALE_ID="$RECEIVED_SALE_ID" RECEIVED_ACCOUNT_RECEIVABLE_ID="$RECEIVED_ACCOUNT_RECEIVABLE_ID" CUSTOMER_ID="$CUSTOMER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+from decimal import Decimal
+
+received_sale = json.loads(os.environ["RECEIVED_SALE_RESPONSE"])["data"]
+received_response = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE"])["data"]
+received_by_id = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_BY_ID_RESPONSE"])["data"]
+received_by_status = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_BY_STATUS_RESPONSE"])["data"]
+open_after_receive = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_OPEN_AFTER_RECEIVE_RESPONSE"])["data"]
+method_search = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE"])["data"]
+received_at_range = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE"])["data"]
+outside_received_at_range = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE"])["data"]
+received_sale_after_receive = json.loads(os.environ["RECEIVED_SALE_AFTER_RECEIVE_RESPONSE"])["data"]
+
+received_sale_id = os.environ["RECEIVED_SALE_ID"]
+received_account_receivable_id = os.environ["RECEIVED_ACCOUNT_RECEIVABLE_ID"]
+customer_id = os.environ["CUSTOMER_ID"]
+store_id = os.environ["STORE_ID"]
+
+sale_receivable = received_sale["accountReceivable"]
+assert sale_receivable["id"] == received_account_receivable_id, "Venda para recebimento deveria retornar accountReceivable correto"
+assert sale_receivable["status"] == "OPEN", "Conta da venda para recebimento deveria iniciar OPEN"
+
+for receivable in [received_response, received_by_id]:
+    assert receivable["id"] == received_account_receivable_id, "Conta recebida retornou id incorreto"
+    assert receivable["saleId"] == received_sale_id, "Conta recebida retornou saleId incorreto"
+    assert receivable["customerId"] == customer_id, "Conta recebida retornou customerId incorreto"
+    assert receivable["storeId"] == store_id, "Conta recebida retornou storeId incorreto"
+    assert receivable["status"] == "RECEIVED", f"Conta deveria estar RECEIVED, veio {receivable['status']}"
+    assert receivable["receivedAt"] is not None, "Conta recebida deveria ter receivedAt"
+    assert receivable["receivedAt"].startswith("2030-05-02"), "receivedAt deveria respeitar a data enviada"
+    assert receivable["receivedByUserId"] is not None, "Conta recebida deveria ter receivedByUserId"
+    assert receivable["receivedBy"] is not None, "Conta recebida deveria retornar receivedBy"
+    assert receivable["receivedBy"]["id"] == receivable["receivedByUserId"], "receivedBy.id deveria bater com receivedByUserId"
+    assert receivable["receiptMethod"] == "PIX", "receiptMethod deveria ser PIX"
+    assert receivable["receiptNotes"] == "Recebimento realizado pelo smoke test", "receiptNotes não bate"
+    assert receivable["receivedAmount"] == receivable["amount"], "receivedAmount deveria ser igual ao amount"
+    assert Decimal(str(receivable["receivedAmount"])) == Decimal(str(received_sale["total"])), (
+        "receivedAmount deveria ser igual ao total da venda"
+    )
+
+assert len(received_by_status) == 1, f"Filtro status=RECEIVED deveria retornar 1 registro, veio {len(received_by_status)}"
+assert received_by_status[0]["id"] == received_account_receivable_id, "Filtro status=RECEIVED retornou conta incorreta"
+assert received_by_status[0]["status"] == "RECEIVED", "Filtro status=RECEIVED retornou status incorreto"
+
+assert len(open_after_receive) == 0, f"Filtro status=OPEN após recebimento deveria retornar 0, veio {len(open_after_receive)}"
+
+assert any(account["id"] == received_account_receivable_id for account in method_search), (
+    "Busca por receiptMethod deveria encontrar a conta recebida"
+)
+
+assert len(received_at_range) == 1, f"Filtro por receivedAt deveria retornar 1 registro, veio {len(received_at_range)}"
+assert received_at_range[0]["id"] == received_account_receivable_id, "Filtro por receivedAt retornou conta incorreta"
+assert received_at_range[0]["receivedAt"].startswith("2030-05-02"), "Filtro por receivedAt retornou baixa fora do período"
+assert len(outside_received_at_range) == 0, (
+    f"Filtro receivedAt fora do período deveria retornar 0, veio {len(outside_received_at_range)}"
+)
+
+received_sale_receivable = received_sale_after_receive["accountReceivable"]
+assert received_sale_after_receive["id"] == received_sale_id, "Busca da venda recebida retornou id incorreto"
+assert received_sale_receivable["id"] == received_account_receivable_id, "Venda recebida deveria retornar conta correta"
+assert received_sale_receivable["status"] == "RECEIVED", "Venda recebida deveria retornar accountReceivable RECEIVED"
+assert received_sale_receivable["receivedAt"] is not None, "Venda recebida deveria retornar receivedAt na conta"
+assert received_sale_receivable["receivedByUserId"] is not None, "Venda recebida deveria retornar receivedByUserId na conta"
+assert received_sale_receivable["receivedAmount"] == received_sale_receivable["amount"], (
+    "Venda recebida deveria retornar receivedAmount igual ao amount da conta"
+)
+PYVALIDATION
+
+json_request PATCH "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/sales/${RECEIVED_SALE_ID}/cancel" "400" "$CANCEL_SALE_PAYLOAD" >/dev/null
+
 FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$(json_request GET "/api/v1/financial-audit/stores/${STORE_ID}/summary" "200" "" )"
 
-FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE" SALE_RESPONSE="$SALE_RESPONSE" PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE" SALE_RESPONSE="$SALE_RESPONSE" RECEIVED_SALE_RESPONSE="$RECEIVED_SALE_RESPONSE" PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 from decimal import Decimal
 
 summary = json.loads(os.environ["FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE"])["data"]
 sale = json.loads(os.environ["SALE_RESPONSE"])["data"]
+received_sale = json.loads(os.environ["RECEIVED_SALE_RESPONSE"])["data"]
 canceled_purchase = json.loads(os.environ["PURCHASE_RESPONSE"])["data"]
 paid_purchase = json.loads(os.environ["PAID_PURCHASE_RESPONSE"])["data"]
 store_id = os.environ["STORE_ID"]
@@ -1551,6 +1762,7 @@ for group_name, group in [("accountsPayable", accounts_payable), ("accountsRecei
         Decimal(str(bucket["amount"]))
 
 expected_canceled_receivable_amount = Decimal(str(sale["total"]))
+expected_received_receivable_amount = Decimal(str(received_sale["total"]))
 expected_canceled_payable_amount = Decimal(str(canceled_purchase["total"]))
 expected_paid_payable_amount = Decimal(str(paid_purchase["total"]))
 
@@ -1559,6 +1771,13 @@ assert accounts_receivable["canceled"]["count"] >= 1, (
 )
 assert Decimal(str(accounts_receivable["canceled"]["amount"])) >= expected_canceled_receivable_amount, (
     "Valor cancelado de contas a receber deveria contemplar a venda cancelada do smoke"
+)
+
+assert accounts_receivable["received"]["count"] >= 1, (
+    "Resumo deveria ter pelo menos 1 conta a receber recebida"
+)
+assert Decimal(str(accounts_receivable["received"]["amount"])) >= expected_received_receivable_amount, (
+    "Valor recebido de contas a receber deveria contemplar a venda recebida do smoke"
 )
 
 assert accounts_payable["canceled"]["count"] >= 1, (

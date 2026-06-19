@@ -60,7 +60,18 @@ async function main() {
     OR: [
       {
         document: {
-          startsWith: 'SMOKE-PURCHASE-'
+          startsWith: 'SMOKE-PURCHASE'
+        }
+      },
+      {
+        notes: {
+          contains: 'smoke',
+          mode: 'insensitive'
+        }
+      },
+      {
+        supplier: {
+          is: supplierWhere
         }
       },
       {
@@ -73,8 +84,28 @@ async function main() {
         }
       },
       {
-        supplier: {
-          is: supplierWhere
+        accountPayable: {
+          is: {
+            OR: [
+              {
+                document: {
+                  startsWith: 'SMOKE-PURCHASE'
+                }
+              },
+              {
+                notes: {
+                  contains: 'smoke',
+                  mode: 'insensitive'
+                }
+              },
+              {
+                paymentNotes: {
+                  contains: 'smoke',
+                  mode: 'insensitive'
+                }
+              }
+            ]
+          }
         }
       }
     ]
@@ -84,7 +115,18 @@ async function main() {
     OR: [
       {
         document: {
-          startsWith: 'SMOKE-SALE-'
+          startsWith: 'SMOKE-SALE'
+        }
+      },
+      {
+        notes: {
+          contains: 'smoke',
+          mode: 'insensitive'
+        }
+      },
+      {
+        customer: {
+          is: customerWhere
         }
       },
       {
@@ -95,9 +137,51 @@ async function main() {
             }
           }
         }
+      },
+      {
+        accountReceivable: {
+          is: {
+            OR: [
+              {
+                document: {
+                  startsWith: 'SMOKE-SALE'
+                }
+              },
+              {
+                notes: {
+                  contains: 'smoke',
+                  mode: 'insensitive'
+                }
+              },
+              {
+                receiptNotes: {
+                  contains: 'smoke',
+                  mode: 'insensitive'
+                }
+              }
+            ]
+          }
+        }
       }
     ]
   };
+
+  const smokePurchases = await prisma.purchase.findMany({
+    where: purchaseWhere,
+    select: {
+      id: true
+    }
+  });
+
+  const smokeSales = await prisma.sale.findMany({
+    where: saleWhere,
+    select: {
+      id: true
+    }
+  });
+
+  const smokePurchaseIds = smokePurchases.map((purchase) => purchase.id);
+  const smokeSaleIds = smokeSales.map((sale) => sale.id);
 
   const stockMovementWhere = {
     OR: [
@@ -110,40 +194,42 @@ async function main() {
         product: {
           is: productWhere
         }
-      }
-    ]
-  };
-
-  const accountPayableWhere = {
-    OR: [
+      },
       {
-        document: {
-          startsWith: 'SMOKE-PURCHASE-'
+        purchaseId: {
+          in: smokePurchaseIds
         }
       },
       {
-        purchase: {
-          is: purchaseWhere
-        }
-      },
-      {
-        supplier: {
-          is: supplierWhere
+        saleId: {
+          in: smokeSaleIds
         }
       }
     ]
   };
 
-  const accountReceivableWhere = {
+  const accountsReceivableWhere = {
     OR: [
       {
         document: {
-          startsWith: 'SMOKE-SALE-'
+          startsWith: 'SMOKE-SALE'
         }
       },
       {
-        sale: {
-          is: saleWhere
+        notes: {
+          contains: 'smoke',
+          mode: 'insensitive'
+        }
+      },
+      {
+        receiptNotes: {
+          contains: 'smoke',
+          mode: 'insensitive'
+        }
+      },
+      {
+        saleId: {
+          in: smokeSaleIds
         }
       },
       {
@@ -154,16 +240,48 @@ async function main() {
     ]
   };
 
+  const accountsPayableWhere = {
+    OR: [
+      {
+        document: {
+          startsWith: 'SMOKE-PURCHASE'
+        }
+      },
+      {
+        notes: {
+          contains: 'smoke',
+          mode: 'insensitive'
+        }
+      },
+      {
+        paymentNotes: {
+          contains: 'smoke',
+          mode: 'insensitive'
+        }
+      },
+      {
+        purchaseId: {
+          in: smokePurchaseIds
+        }
+      },
+      {
+        supplier: {
+          is: supplierWhere
+        }
+      }
+    ]
+  };
+
   const deletedStockMovements = await prisma.stockMovement.deleteMany({
     where: stockMovementWhere
   });
 
   const deletedAccountsReceivable = await prisma.accountReceivable.deleteMany({
-    where: accountReceivableWhere
+    where: accountsReceivableWhere
   });
 
   const deletedAccountsPayable = await prisma.accountPayable.deleteMany({
-    where: accountPayableWhere
+    where: accountsPayableWhere
   });
 
   const deletedPurchaseItems = await prisma.purchaseItem.deleteMany({
@@ -175,8 +293,8 @@ async function main() {
           }
         },
         {
-          purchase: {
-            is: purchaseWhere
+          purchaseId: {
+            in: smokePurchaseIds
           }
         }
       ]
@@ -184,7 +302,11 @@ async function main() {
   });
 
   const deletedPurchases = await prisma.purchase.deleteMany({
-    where: purchaseWhere
+    where: {
+      id: {
+        in: smokePurchaseIds
+      }
+    }
   });
 
   const deletedSaleItems = await prisma.saleItem.deleteMany({
@@ -196,8 +318,8 @@ async function main() {
           }
         },
         {
-          sale: {
-            is: saleWhere
+          saleId: {
+            in: smokeSaleIds
           }
         }
       ]
@@ -205,7 +327,11 @@ async function main() {
   });
 
   const deletedSales = await prisma.sale.deleteMany({
-    where: saleWhere
+    where: {
+      id: {
+        in: smokeSaleIds
+      }
+    }
   });
 
   const deletedSuppliers = await prisma.supplier.deleteMany({
