@@ -51,6 +51,17 @@ enum AccountReceivableStatus {
   CANCELED
 }
 
+enum CashMovementType {
+  INFLOW
+  OUTFLOW
+}
+
+enum CashMovementSource {
+  ACCOUNT_PAYABLE
+  ACCOUNT_RECEIVABLE
+  MANUAL
+}
+
 enum PaymentMethod {
   CASH
   PIX
@@ -82,6 +93,8 @@ model User {
   receivedAccountsReceivable AccountReceivable[] @relation("AccountReceivableReceivedBy")
   canceledAccountsReceivable AccountReceivable[] @relation("AccountReceivableCanceledBy")
 
+  cashMovements CashMovement[] @relation("CashMovementCreatedBy")
+
   @@map("users")
 }
 
@@ -106,6 +119,7 @@ model Store {
 
   accountsPayable    AccountPayable[]
   accountsReceivable AccountReceivable[]
+  cashMovements      CashMovement[]
 
   @@map("stores")
 }
@@ -385,11 +399,12 @@ model AccountPayable {
   cancellationReason String?
   notes              String?
 
-  store      Store     @relation(fields: [storeId], references: [id])
-  supplier   Supplier? @relation(fields: [supplierId], references: [id])
-  purchase   Purchase? @relation(fields: [purchaseId], references: [id])
-  paidBy     User?     @relation("AccountPayablePaidBy", fields: [paidByUserId], references: [id])
-  canceledBy User?     @relation("AccountPayableCanceledBy", fields: [canceledByUserId], references: [id])
+  store        Store         @relation(fields: [storeId], references: [id])
+  supplier     Supplier?     @relation(fields: [supplierId], references: [id])
+  purchase     Purchase?     @relation(fields: [purchaseId], references: [id])
+  paidBy       User?         @relation("AccountPayablePaidBy", fields: [paidByUserId], references: [id])
+  canceledBy   User?         @relation("AccountPayableCanceledBy", fields: [canceledByUserId], references: [id])
+  cashMovement CashMovement?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -423,11 +438,12 @@ model AccountReceivable {
   cancellationReason String?
   notes              String?
 
-  store      Store     @relation(fields: [storeId], references: [id])
-  customer   Customer? @relation(fields: [customerId], references: [id])
-  sale       Sale?     @relation(fields: [saleId], references: [id])
-  receivedBy User?     @relation("AccountReceivableReceivedBy", fields: [receivedByUserId], references: [id])
-  canceledBy User?     @relation("AccountReceivableCanceledBy", fields: [canceledByUserId], references: [id])
+  store        Store         @relation(fields: [storeId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  sale         Sale?         @relation(fields: [saleId], references: [id])
+  receivedBy   User?         @relation("AccountReceivableReceivedBy", fields: [receivedByUserId], references: [id])
+  canceledBy   User?         @relation("AccountReceivableCanceledBy", fields: [canceledByUserId], references: [id])
+  cashMovement CashMovement?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -439,4 +455,35 @@ model AccountReceivable {
   @@index([receivedByUserId])
   @@index([canceledByUserId])
   @@map("accounts_receivable")
+}
+
+model CashMovement {
+  id                  String             @id @default(uuid())
+  storeId             String
+  userId              String
+  accountPayableId    String?            @unique
+  accountReceivableId String?            @unique
+  type                CashMovementType
+  source              CashMovementSource
+  amount              Decimal            @db.Decimal(12, 2)
+  occurredAt          DateTime
+  description         String
+  document            String?
+  notes               String?
+
+  store             Store              @relation(fields: [storeId], references: [id])
+  user              User               @relation("CashMovementCreatedBy", fields: [userId], references: [id])
+  accountPayable    AccountPayable?    @relation(fields: [accountPayableId], references: [id])
+  accountReceivable AccountReceivable? @relation(fields: [accountReceivableId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, occurredAt])
+  @@index([storeId, type])
+  @@index([storeId, source])
+  @@index([userId, occurredAt])
+  @@index([accountPayableId])
+  @@index([accountReceivableId])
+  @@map("cash_movements")
 }

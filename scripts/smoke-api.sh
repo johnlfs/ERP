@@ -118,6 +118,7 @@ request GET "/api/v1/suppliers?page=1&pageSize=10" "401"
 request GET "/api/v1/purchases?page=1&pageSize=10" "401"
 request GET "/api/v1/accounts-payable?page=1&pageSize=10" "401"
 request GET "/api/v1/accounts-receivable?page=1&pageSize=10" "401"
+request GET "/api/v1/cash-movements?page=1&pageSize=10" "401"
 
 UNAUTHORIZED_CATEGORY_PAYLOAD="$(cat <<JSON
 {
@@ -228,6 +229,7 @@ request PATCH "/api/v1/sales/00000000-0000-0000-0000-000000000001/cancel" "401"
 request PATCH "/api/v1/purchases/00000000-0000-0000-0000-000000000001/cancel" "401"
 request PATCH "/api/v1/accounts-payable/00000000-0000-0000-0000-000000000001/pay" "401"
 request PATCH "/api/v1/accounts-receivable/00000000-0000-0000-0000-000000000001/receive" "401"
+request GET "/api/v1/cash-movements/stores/${STORE_ID}/summary" "401"
 request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000000001" "401"
 request GET "/api/v1/stock-audit/stores/${STORE_ID}/summary" "401"
 request GET "/api/v1/financial-audit/stores/${STORE_ID}/summary" "401"
@@ -248,6 +250,15 @@ AUTH_TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c 'import sys,json; print
 json_request GET "/api/v1/auth/me" "200" "" >/dev/null
 
 json_request GET "/api/v1/financial-audit/stores/abc/summary" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements/stores/abc/summary" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements?page=1&pageSize=10&type=INVALID" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements?page=1&pageSize=10&source=INVALID" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements?page=1&pageSize=10&storeId=abc" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements?page=1&pageSize=10&accountPayableId=abc" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements?page=1&pageSize=10&accountReceivableId=abc" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements?page=1&pageSize=10&occurredAtFrom=not-a-date" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements?page=1&pageSize=10&occurredAtFrom=2030-06-02T00:00:00.000Z&occurredAtTo=2030-06-01T00:00:00.000Z" "400" "" >/dev/null
+json_request GET "/api/v1/cash-movements/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
 
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&status=INVALID" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&storeId=abc" "400" "" >/dev/null
@@ -1479,8 +1490,13 @@ PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE="$(json_request GET "/api/v1/acco
 PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE="$(json_request GET "/api/v1/accounts-payable?paidAtFrom=2030-03-02T00:00:00.000Z&paidAtTo=2030-03-03T00:00:00.000Z&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE="$(json_request GET "/api/v1/accounts-payable?paidAtFrom=2030-03-03T00:00:00.000Z&paidAtTo=2030-03-04T00:00:00.000Z&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 PAID_PURCHASE_AFTER_PAY_RESPONSE="$(json_request GET "/api/v1/purchases/${PAID_PURCHASE_ID}" "200" "" )"
+PAID_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE="$(json_request GET "/api/v1/cash-movements?accountPayableId=${PAID_ACCOUNT_PAYABLE_ID}&page=1&pageSize=10" "200" "" )"
+PAID_CASH_MOVEMENTS_BY_TYPE_SOURCE_RESPONSE="$(json_request GET "/api/v1/cash-movements?type=OUTFLOW&source=ACCOUNT_PAYABLE&accountPayableId=${PAID_ACCOUNT_PAYABLE_ID}&page=1&pageSize=10" "200" "" )"
+PAID_CASH_MOVEMENTS_BY_OCCURRED_AT_RESPONSE="$(json_request GET "/api/v1/cash-movements?occurredAtFrom=2030-03-02T00:00:00.000Z&occurredAtTo=2030-03-03T00:00:00.000Z&accountPayableId=${PAID_ACCOUNT_PAYABLE_ID}&page=1&pageSize=10" "200" "" )"
+PAID_CASH_MOVEMENT_ID="$(printf '%s' "$PAID_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE" | python3 -c 'import sys,json; data=json.load(sys.stdin)["data"]; print(data[0]["id"] if data else "")')"
+PAID_CASH_MOVEMENT_BY_ID_RESPONSE="$(json_request GET "/api/v1/cash-movements/${PAID_CASH_MOVEMENT_ID}" "200" "" )"
 
-PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" PAID_ACCOUNT_PAYABLE_RESPONSE="$PAID_ACCOUNT_PAYABLE_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE" PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE="$PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE" PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE="$PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE" PAID_PURCHASE_AFTER_PAY_RESPONSE="$PAID_PURCHASE_AFTER_PAY_RESPONSE" PAID_PURCHASE_ID="$PAID_PURCHASE_ID" PAID_ACCOUNT_PAYABLE_ID="$PAID_ACCOUNT_PAYABLE_ID" SUPPLIER_ID="$SUPPLIER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+PAID_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE="$PAID_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE" PAID_CASH_MOVEMENTS_BY_TYPE_SOURCE_RESPONSE="$PAID_CASH_MOVEMENTS_BY_TYPE_SOURCE_RESPONSE" PAID_CASH_MOVEMENTS_BY_OCCURRED_AT_RESPONSE="$PAID_CASH_MOVEMENTS_BY_OCCURRED_AT_RESPONSE" PAID_CASH_MOVEMENT_BY_ID_RESPONSE="$PAID_CASH_MOVEMENT_BY_ID_RESPONSE" PAID_CASH_MOVEMENT_ID="$PAID_CASH_MOVEMENT_ID" PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" PAID_ACCOUNT_PAYABLE_RESPONSE="$PAID_ACCOUNT_PAYABLE_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE" PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE="$PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE" PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE="$PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE" PAID_PURCHASE_AFTER_PAY_RESPONSE="$PAID_PURCHASE_AFTER_PAY_RESPONSE" PAID_PURCHASE_ID="$PAID_PURCHASE_ID" PAID_ACCOUNT_PAYABLE_ID="$PAID_ACCOUNT_PAYABLE_ID" SUPPLIER_ID="$SUPPLIER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 from decimal import Decimal
@@ -1494,9 +1510,14 @@ method_search = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RES
 paid_at_range = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE"])["data"]
 outside_paid_at_range = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE"])["data"]
 paid_purchase_after_pay = json.loads(os.environ["PAID_PURCHASE_AFTER_PAY_RESPONSE"])["data"]
+paid_cash_by_account = json.loads(os.environ["PAID_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE"])["data"]
+paid_cash_by_type_source = json.loads(os.environ["PAID_CASH_MOVEMENTS_BY_TYPE_SOURCE_RESPONSE"])["data"]
+paid_cash_by_occurred_at = json.loads(os.environ["PAID_CASH_MOVEMENTS_BY_OCCURRED_AT_RESPONSE"])["data"]
+paid_cash_by_id = json.loads(os.environ["PAID_CASH_MOVEMENT_BY_ID_RESPONSE"])["data"]
 
 paid_purchase_id = os.environ["PAID_PURCHASE_ID"]
 paid_account_payable_id = os.environ["PAID_ACCOUNT_PAYABLE_ID"]
+paid_cash_movement_id = os.environ["PAID_CASH_MOVEMENT_ID"]
 supplier_id = os.environ["SUPPLIER_ID"]
 store_id = os.environ["STORE_ID"]
 
@@ -1548,6 +1569,25 @@ assert paid_purchase_payable["paidByUserId"] is not None, "Compra paga deveria r
 assert paid_purchase_payable["paidAmount"] == paid_purchase_payable["amount"], (
     "Compra paga deveria retornar paidAmount igual ao amount da conta"
 )
+
+assert paid_response["cashMovement"] is not None, "Baixa de conta a pagar deveria retornar cashMovement"
+assert paid_response["cashMovement"]["id"] == paid_cash_movement_id, "cashMovement da conta paga veio com id incorreto"
+
+for movements in [paid_cash_by_account, paid_cash_by_type_source, paid_cash_by_occurred_at]:
+    assert len(movements) == 1, f"Movimento de caixa da baixa deveria retornar 1 registro, veio {len(movements)}"
+    movement = movements[0]
+    assert movement["id"] == paid_cash_movement_id, "Movimento de caixa da baixa retornou id incorreto"
+    assert movement["accountPayableId"] == paid_account_payable_id, "Movimento de caixa deveria apontar accountPayableId"
+    assert movement["accountReceivableId"] is None, "Movimento de pagamento não deveria ter accountReceivableId"
+    assert movement["type"] == "OUTFLOW", "Pagamento de conta a pagar deveria gerar OUTFLOW"
+    assert movement["source"] == "ACCOUNT_PAYABLE", "Pagamento de conta a pagar deveria ter source ACCOUNT_PAYABLE"
+    assert movement["occurredAt"].startswith("2030-03-02"), "Movimento de caixa deveria respeitar paidAt"
+    assert Decimal(str(movement["amount"])) == Decimal(str(paid_response["paidAmount"])), "Valor do movimento de caixa deveria bater com paidAmount"
+
+assert paid_cash_by_id["id"] == paid_cash_movement_id, "GET cash movement por id retornou id incorreto"
+assert paid_cash_by_id["accountPayableId"] == paid_account_payable_id, "GET cash movement deveria retornar accountPayableId"
+assert paid_cash_by_id["accountPayable"]["id"] == paid_account_payable_id, "GET cash movement deveria retornar accountPayable relacionado"
+assert paid_cash_by_id["user"] is not None, "GET cash movement deveria retornar usuário"
 PYVALIDATION
 
 json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_PAYLOAD" >/dev/null
@@ -1650,8 +1690,14 @@ RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE="$(json_request GET "/api/
 RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?receivedAtFrom=2030-05-02T00:00:00.000Z&receivedAtTo=2030-05-03T00:00:00.000Z&saleId=${RECEIVED_SALE_ID}&page=1&pageSize=10" "200" "" )"
 RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?receivedAtFrom=2030-05-03T00:00:00.000Z&receivedAtTo=2030-05-04T00:00:00.000Z&saleId=${RECEIVED_SALE_ID}&page=1&pageSize=10" "200" "" )"
 RECEIVED_SALE_AFTER_RECEIVE_RESPONSE="$(json_request GET "/api/v1/sales/${RECEIVED_SALE_ID}" "200" "" )"
+RECEIVED_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE="$(json_request GET "/api/v1/cash-movements?accountReceivableId=${RECEIVED_ACCOUNT_RECEIVABLE_ID}&page=1&pageSize=10" "200" "" )"
+RECEIVED_CASH_MOVEMENTS_BY_TYPE_SOURCE_RESPONSE="$(json_request GET "/api/v1/cash-movements?type=INFLOW&source=ACCOUNT_RECEIVABLE&accountReceivableId=${RECEIVED_ACCOUNT_RECEIVABLE_ID}&page=1&pageSize=10" "200" "" )"
+RECEIVED_CASH_MOVEMENTS_BY_OCCURRED_AT_RESPONSE="$(json_request GET "/api/v1/cash-movements?occurredAtFrom=2030-05-02T00:00:00.000Z&occurredAtTo=2030-05-03T00:00:00.000Z&accountReceivableId=${RECEIVED_ACCOUNT_RECEIVABLE_ID}&page=1&pageSize=10" "200" "" )"
+RECEIVED_CASH_MOVEMENT_ID="$(printf '%s' "$RECEIVED_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE" | python3 -c 'import sys,json; data=json.load(sys.stdin)["data"]; print(data[0]["id"] if data else "")')"
+RECEIVED_CASH_MOVEMENT_BY_ID_RESPONSE="$(json_request GET "/api/v1/cash-movements/${RECEIVED_CASH_MOVEMENT_ID}" "200" "" )"
+CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE="$(json_request GET "/api/v1/cash-movements/stores/${STORE_ID}/summary" "200" "" )"
 
-RECEIVED_SALE_RESPONSE="$RECEIVED_SALE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_ID_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_ID_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_STATUS_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_STATUS_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_OPEN_AFTER_RECEIVE_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_OPEN_AFTER_RECEIVE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE" RECEIVED_SALE_AFTER_RECEIVE_RESPONSE="$RECEIVED_SALE_AFTER_RECEIVE_RESPONSE" RECEIVED_SALE_ID="$RECEIVED_SALE_ID" RECEIVED_ACCOUNT_RECEIVABLE_ID="$RECEIVED_ACCOUNT_RECEIVABLE_ID" CUSTOMER_ID="$CUSTOMER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+RECEIVED_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE="$RECEIVED_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE" RECEIVED_CASH_MOVEMENTS_BY_TYPE_SOURCE_RESPONSE="$RECEIVED_CASH_MOVEMENTS_BY_TYPE_SOURCE_RESPONSE" RECEIVED_CASH_MOVEMENTS_BY_OCCURRED_AT_RESPONSE="$RECEIVED_CASH_MOVEMENTS_BY_OCCURRED_AT_RESPONSE" RECEIVED_CASH_MOVEMENT_BY_ID_RESPONSE="$RECEIVED_CASH_MOVEMENT_BY_ID_RESPONSE" RECEIVED_CASH_MOVEMENT_ID="$RECEIVED_CASH_MOVEMENT_ID" CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE="$CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE" PAID_CASH_MOVEMENT_ID="$PAID_CASH_MOVEMENT_ID" PAID_ACCOUNT_PAYABLE_ID="$PAID_ACCOUNT_PAYABLE_ID" RECEIVED_SALE_RESPONSE="$RECEIVED_SALE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_ID_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_ID_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_STATUS_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_STATUS_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_OPEN_AFTER_RECEIVE_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_OPEN_AFTER_RECEIVE_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEARCH_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE" RECEIVED_SALE_AFTER_RECEIVE_RESPONSE="$RECEIVED_SALE_AFTER_RECEIVE_RESPONSE" RECEIVED_SALE_ID="$RECEIVED_SALE_ID" RECEIVED_ACCOUNT_RECEIVABLE_ID="$RECEIVED_ACCOUNT_RECEIVABLE_ID" CUSTOMER_ID="$CUSTOMER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 from decimal import Decimal
@@ -1665,9 +1711,17 @@ method_search = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_BY_METHOD_SEA
 received_at_range = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_BY_RECEIVED_AT_RESPONSE"])["data"]
 outside_received_at_range = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_OUTSIDE_RECEIVED_AT_RESPONSE"])["data"]
 received_sale_after_receive = json.loads(os.environ["RECEIVED_SALE_AFTER_RECEIVE_RESPONSE"])["data"]
+received_cash_by_account = json.loads(os.environ["RECEIVED_CASH_MOVEMENTS_BY_ACCOUNT_RESPONSE"])["data"]
+received_cash_by_type_source = json.loads(os.environ["RECEIVED_CASH_MOVEMENTS_BY_TYPE_SOURCE_RESPONSE"])["data"]
+received_cash_by_occurred_at = json.loads(os.environ["RECEIVED_CASH_MOVEMENTS_BY_OCCURRED_AT_RESPONSE"])["data"]
+received_cash_by_id = json.loads(os.environ["RECEIVED_CASH_MOVEMENT_BY_ID_RESPONSE"])["data"]
+cash_summary = json.loads(os.environ["CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE"])["data"]
 
 received_sale_id = os.environ["RECEIVED_SALE_ID"]
 received_account_receivable_id = os.environ["RECEIVED_ACCOUNT_RECEIVABLE_ID"]
+received_cash_movement_id = os.environ["RECEIVED_CASH_MOVEMENT_ID"]
+paid_cash_movement_id = os.environ["PAID_CASH_MOVEMENT_ID"]
+paid_account_payable_id = os.environ["PAID_ACCOUNT_PAYABLE_ID"]
 customer_id = os.environ["CUSTOMER_ID"]
 store_id = os.environ["STORE_ID"]
 
@@ -1719,6 +1773,35 @@ assert received_sale_receivable["receivedByUserId"] is not None, "Venda recebida
 assert received_sale_receivable["receivedAmount"] == received_sale_receivable["amount"], (
     "Venda recebida deveria retornar receivedAmount igual ao amount da conta"
 )
+
+assert received_response["cashMovement"] is not None, "Recebimento deveria retornar cashMovement"
+assert received_response["cashMovement"]["id"] == received_cash_movement_id, "cashMovement da conta recebida veio com id incorreto"
+
+for movements in [received_cash_by_account, received_cash_by_type_source, received_cash_by_occurred_at]:
+    assert len(movements) == 1, f"Movimento de caixa do recebimento deveria retornar 1 registro, veio {len(movements)}"
+    movement = movements[0]
+    assert movement["id"] == received_cash_movement_id, "Movimento de caixa do recebimento retornou id incorreto"
+    assert movement["accountReceivableId"] == received_account_receivable_id, "Movimento de caixa deveria apontar accountReceivableId"
+    assert movement["accountPayableId"] is None, "Movimento de recebimento não deveria ter accountPayableId"
+    assert movement["type"] == "INFLOW", "Recebimento de conta a receber deveria gerar INFLOW"
+    assert movement["source"] == "ACCOUNT_RECEIVABLE", "Recebimento de conta a receber deveria ter source ACCOUNT_RECEIVABLE"
+    assert movement["occurredAt"].startswith("2030-05-02"), "Movimento de caixa deveria respeitar receivedAt"
+    assert Decimal(str(movement["amount"])) == Decimal(str(received_response["receivedAmount"])), "Valor do movimento de caixa deveria bater com receivedAmount"
+
+assert received_cash_by_id["id"] == received_cash_movement_id, "GET cash movement por id retornou id incorreto"
+assert received_cash_by_id["accountReceivableId"] == received_account_receivable_id, "GET cash movement deveria retornar accountReceivableId"
+assert received_cash_by_id["accountReceivable"]["id"] == received_account_receivable_id, "GET cash movement deveria retornar accountReceivable relacionado"
+assert received_cash_by_id["user"] is not None, "GET cash movement deveria retornar usuário"
+
+assert cash_summary["storeId"] == store_id, "Resumo de caixa deveria retornar storeId correto"
+assert cash_summary["isConsistent"] is True, "Resumo de caixa deveria estar consistente"
+assert cash_summary["inflow"]["count"] >= 1, "Resumo de caixa deveria ter pelo menos uma entrada"
+assert cash_summary["outflow"]["count"] >= 1, "Resumo de caixa deveria ter pelo menos uma saída"
+assert cash_summary["bySource"]["accountPayable"]["count"] >= 1, "Resumo de caixa deveria ter origem accountPayable"
+assert cash_summary["bySource"]["accountReceivable"]["count"] >= 1, "Resumo de caixa deveria ter origem accountReceivable"
+assert Decimal(str(cash_summary["inflow"]["amount"])) >= Decimal(str(received_response["receivedAmount"])), "Entradas deveriam contemplar o recebimento"
+assert Decimal(str(cash_summary["outflow"]["amount"])) >= Decimal(str(received_response["receivedAmount"])) or cash_summary["outflow"]["count"] >= 1, "Saídas deveriam contemplar pagamento"
+assert Decimal(str(cash_summary["balance"])) == Decimal(str(cash_summary["inflow"]["amount"])) - Decimal(str(cash_summary["outflow"]["amount"])), "Saldo de caixa deveria ser entrada menos saída"
 PYVALIDATION
 
 json_request PATCH "/api/v1/accounts-receivable/${RECEIVED_ACCOUNT_RECEIVABLE_ID}/receive" "400" "$RECEIVE_ACCOUNT_RECEIVABLE_PAYLOAD" >/dev/null
@@ -1726,12 +1809,15 @@ json_request PATCH "/api/v1/sales/${RECEIVED_SALE_ID}/cancel" "400" "$CANCEL_SAL
 
 FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$(json_request GET "/api/v1/financial-audit/stores/${STORE_ID}/summary" "200" "" )"
 
-FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE" SALE_RESPONSE="$SALE_RESPONSE" RECEIVED_SALE_RESPONSE="$RECEIVED_SALE_RESPONSE" PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE" CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE="$CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE" RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE="$RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE" PAID_ACCOUNT_PAYABLE_RESPONSE="$PAID_ACCOUNT_PAYABLE_RESPONSE" SALE_RESPONSE="$SALE_RESPONSE" RECEIVED_SALE_RESPONSE="$RECEIVED_SALE_RESPONSE" PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 from decimal import Decimal
 
 summary = json.loads(os.environ["FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE"])["data"]
+cash_summary = json.loads(os.environ["CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE"])["data"]
+received_account = json.loads(os.environ["RECEIVED_ACCOUNT_RECEIVABLE_RESPONSE"])["data"]
+paid_account = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_RESPONSE"])["data"]
 sale = json.loads(os.environ["SALE_RESPONSE"])["data"]
 received_sale = json.loads(os.environ["RECEIVED_SALE_RESPONSE"])["data"]
 canceled_purchase = json.loads(os.environ["PURCHASE_RESPONSE"])["data"]
@@ -1746,6 +1832,12 @@ assert summary["checks"]["accountsPayableStatusBreakdownMatchesTotal"] is True, 
 )
 assert summary["checks"]["accountsReceivableStatusBreakdownMatchesTotal"] is True, (
     "Resumo de contas a receber deveria bater com total"
+)
+assert summary["checks"]["cashMovementBreakdownMatchesTotal"] is True, (
+    "Resumo de movimentações de caixa deveria bater com total"
+)
+assert summary["checks"]["cashBalanceMatchesInflowMinusOutflow"] is True, (
+    "Saldo de caixa deveria bater com entradas menos saídas"
 )
 
 accounts_payable = summary["accountsPayable"]
@@ -1797,6 +1889,14 @@ assert Decimal(str(accounts_payable["paid"]["amount"])) >= expected_paid_payable
 assert Decimal(str(summary["netOpenAmount"])) == (
     Decimal(str(accounts_receivable["open"]["amount"])) - Decimal(str(accounts_payable["open"]["amount"]))
 ), "netOpenAmount deveria ser recebíveis em aberto menos pagáveis em aberto"
+
+assert "cashMovements" in summary, "Resumo financeiro deveria retornar cashMovements"
+assert summary["cashMovements"]["inflow"]["count"] >= 1, "Resumo financeiro deveria ter entrada de caixa"
+assert summary["cashMovements"]["outflow"]["count"] >= 1, "Resumo financeiro deveria ter saída de caixa"
+assert Decimal(str(summary["cashMovements"]["inflow"]["amount"])) >= Decimal(str(received_account["receivedAmount"])), "Entradas financeiras deveriam contemplar recebimento"
+assert Decimal(str(summary["cashMovements"]["outflow"]["amount"])) >= Decimal(str(paid_account["paidAmount"])), "Saídas financeiras deveriam contemplar pagamento"
+assert Decimal(str(summary["cashBalance"])) == Decimal(str(summary["cashMovements"]["balance"])), "cashBalance deveria bater com resumo de caixa"
+assert Decimal(str(cash_summary["balance"])) == Decimal(str(summary["cashMovements"]["balance"])), "Resumo de caixa dedicado e financeiro deveriam bater"
 PYVALIDATION
 
 json_request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null

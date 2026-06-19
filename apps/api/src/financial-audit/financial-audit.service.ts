@@ -7,6 +7,8 @@ import {
 import {
   AccountPayableStatus,
   AccountReceivableStatus,
+  CashMovementSource,
+  CashMovementType,
   Prisma
 } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
@@ -23,6 +25,18 @@ type FinancialStatusSummary = {
   received?: FinancialBucket;
   canceled: FinancialBucket;
   total: FinancialBucket;
+};
+
+type CashMovementSummary = {
+  inflow: FinancialBucket;
+  outflow: FinancialBucket;
+  total: FinancialBucket;
+  balance: number;
+  bySource: {
+    accountPayable: FinancialBucket;
+    accountReceivable: FinancialBucket;
+    manual: FinancialBucket;
+  };
 };
 
 @Injectable()
@@ -172,6 +186,98 @@ export class FinancialAuditService {
     };
   }
 
+  private async summarizeCashMovements(storeId: string): Promise<CashMovementSummary> {
+    const [inflow, outflow, total, accountPayable, accountReceivable, manual] =
+      await this.database.$transaction([
+        this.database.cashMovement.aggregate({
+          where: {
+            storeId,
+            type: CashMovementType.INFLOW
+          },
+          _count: {
+            _all: true
+          },
+          _sum: {
+            amount: true
+          }
+        }),
+        this.database.cashMovement.aggregate({
+          where: {
+            storeId,
+            type: CashMovementType.OUTFLOW
+          },
+          _count: {
+            _all: true
+          },
+          _sum: {
+            amount: true
+          }
+        }),
+        this.database.cashMovement.aggregate({
+          where: {
+            storeId
+          },
+          _count: {
+            _all: true
+          },
+          _sum: {
+            amount: true
+          }
+        }),
+        this.database.cashMovement.aggregate({
+          where: {
+            storeId,
+            source: CashMovementSource.ACCOUNT_PAYABLE
+          },
+          _count: {
+            _all: true
+          },
+          _sum: {
+            amount: true
+          }
+        }),
+        this.database.cashMovement.aggregate({
+          where: {
+            storeId,
+            source: CashMovementSource.ACCOUNT_RECEIVABLE
+          },
+          _count: {
+            _all: true
+          },
+          _sum: {
+            amount: true
+          }
+        }),
+        this.database.cashMovement.aggregate({
+          where: {
+            storeId,
+            source: CashMovementSource.MANUAL
+          },
+          _count: {
+            _all: true
+          },
+          _sum: {
+            amount: true
+          }
+        })
+      ]);
+
+    const inflowBucket = this.formatBucket(inflow._count._all, inflow._sum.amount);
+    const outflowBucket = this.formatBucket(outflow._count._all, outflow._sum.amount);
+
+    return {
+      inflow: inflowBucket,
+      outflow: outflowBucket,
+      total: this.formatBucket(total._count._all, total._sum.amount),
+      balance: inflowBucket.amount - outflowBucket.amount,
+      bySource: {
+        accountPayable: this.formatBucket(accountPayable._count._all, accountPayable._sum.amount),
+        accountReceivable: this.formatBucket(accountReceivable._count._all, accountReceivable._sum.amount),
+        manual: this.formatBucket(manual._count._all, manual._sum.amount)
+      }
+    };
+  }
+
   private isStatusBreakdownConsistent(summary: FinancialStatusSummary) {
     const statusCount =
       summary.open.count +
@@ -188,6 +294,27 @@ export class FinancialAuditService {
     return (
       statusCount === summary.total.count &&
       Math.abs(statusAmount - summary.total.amount) < 0.0001
+    );
+  }
+
+  private isCashMovementBreakdownConsistent(summary: CashMovementSummary) {
+    const typeCount = summary.inflow.count + summary.outflow.count;
+    const typeAmount = summary.inflow.amount + summary.outflow.amount;
+    const sourceCount =
+      summary.bySource.accountPayable.count +
+      summary.bySource.accountReceivable.count +
+      summary.bySource.manual.count;
+    const sourceAmount =
+      summary.bySource.accountPayable.amount +
+      summary.bySource.accountReceivable.amount +
+      summary.bySource.manual.amount;
+
+    return (
+      typeCount === summary.total.count &&
+      sourceCount === summary.total.count &&
+      Math.abs(typeAmount - summary.total.amount) < 0.0001 &&
+      Math.abs(sourceAmount - summary.total.amount) < 0.0001 &&
+      Math.abs(summary.balance - (summary.inflow.amount - summary.outflow.amount)) < 0.0001
     );
   }
 
@@ -211,25 +338,36 @@ export class FinancialAuditService {
       throw new NotFoundException('Loja não encontrada');
     }
 
-    const [accountsPayable, accountsReceivable] = await Promise.all([
+    const [accountsPayable, accountsReceivable, cashMovements] = await Promise.all([
       this.summarizeAccountsPayable(storeId),
-      this.summarizeAccountsReceivable(storeId)
+      this.summarizeAccountsReceivable(storeId),
+      this.summarizeCashMovements(storeId)
     ]);
 
     const accountsPayableConsistent = this.isStatusBreakdownConsistent(accountsPayable);
     const accountsReceivableConsistent = this.isStatusBreakdownConsistent(accountsReceivable);
+    const cashMovementsConsistent = this.isCashMovementBreakdownConsistent(cashMovements);
 
     return {
       storeId,
       store,
       accountsPayable,
       accountsReceivable,
+      cashMovements,
       netOpenAmount: accountsReceivable.open.amount - accountsPayable.open.amount,
+      cashBalance: cashMovements.balance,
       checks: {
         accountsPayableStatusBreakdownMatchesTotal: accountsPayableConsistent,
-        accountsReceivableStatusBreakdownMatchesTotal: accountsReceivableConsistent
+        accountsReceivableStatusBreakdownMatchesTotal: accountsReceivableConsistent,
+        cashMovementBreakdownMatchesTotal: cashMovementsConsistent,
+        cashBalanceMatchesInflowMinusOutflow: Math.abs(
+          cashMovements.balance - (cashMovements.inflow.amount - cashMovements.outflow.amount)
+        ) < 0.0001
       },
-      isConsistent: accountsPayableConsistent && accountsReceivableConsistent,
+      isConsistent:
+        accountsPayableConsistent &&
+        accountsReceivableConsistent &&
+        cashMovementsConsistent,
       checkedAt: new Date()
     };
   }

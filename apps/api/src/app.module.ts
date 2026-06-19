@@ -3,6 +3,7 @@ import { AccountsPayableModule } from './accounts-payable/accounts-payable.modul
 import { AccountsReceivableModule } from './accounts-receivable/accounts-receivable.module';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { CashMovementsModule } from './cash-movements/cash-movements.module';
 import { CategoriesModule } from './categories/categories.module';
 import { AppConfigModule } from './config/app-config.module';
 import { CustomersModule } from './customers/customers.module';
@@ -32,7 +33,8 @@ import { SuppliersModule } from './suppliers/suppliers.module';
     StockMovementsModule,
     AccountsPayableModule,
     AccountsReceivableModule,
-    FinancialAuditModule
+    FinancialAuditModule,
+    CashMovementsModule
   ],
   controllers: [AppController]
 })

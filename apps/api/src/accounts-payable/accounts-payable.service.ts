@@ -5,7 +5,12 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import { AccountPayableStatus, Prisma } from '@prisma/client';
+import {
+  AccountPayableStatus,
+  CashMovementSource,
+  CashMovementType,
+  Prisma
+} from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { ensureUserCanWriteStore } from '../auth/store-access';
 import { ParsedPagination } from '../common/pagination';
@@ -38,6 +43,18 @@ const accountPayableInclude = {
       status: true,
       total: true,
       createdAt: true
+    }
+  },
+  cashMovement: {
+    select: {
+      id: true,
+      type: true,
+      source: true,
+      amount: true,
+      occurredAt: true,
+      description: true,
+      document: true,
+      notes: true
     }
   },
   paidBy: {
@@ -197,6 +214,12 @@ export class AccountsPayableService {
         ? {
             ...accountPayable.purchase,
             total: this.decimalToNumber(accountPayable.purchase.total)
+          }
+        : null,
+      cashMovement: accountPayable.cashMovement
+        ? {
+            ...accountPayable.cashMovement,
+            amount: this.decimalToNumber(accountPayable.cashMovement.amount)
           }
         : null,
       paidBy: accountPayable.paidBy,
@@ -363,7 +386,9 @@ export class AccountsPayableService {
           id: true,
           storeId: true,
           status: true,
-          amount: true
+          amount: true,
+          description: true,
+          document: true
         }
       });
 
@@ -392,6 +417,21 @@ export class AccountsPayableService {
           paidAmount,
           paymentMethod: input.paymentMethod.trim(),
           paymentNotes: input.paymentNotes?.trim()
+        }
+      });
+
+      await tx.cashMovement.create({
+        data: {
+          storeId: accountPayable.storeId,
+          userId: user.id,
+          accountPayableId: accountPayable.id,
+          type: CashMovementType.OUTFLOW,
+          source: CashMovementSource.ACCOUNT_PAYABLE,
+          amount: paidAmount,
+          occurredAt: paidAt,
+          description: `Pagamento de conta a pagar: ${accountPayable.description}`,
+          document: accountPayable.document,
+          notes: input.paymentNotes?.trim()
         }
       });
 

@@ -5,7 +5,12 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import { AccountReceivableStatus, Prisma } from '@prisma/client';
+import {
+  AccountReceivableStatus,
+  CashMovementSource,
+  CashMovementType,
+  Prisma
+} from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { ensureUserCanWriteStore } from '../auth/store-access';
 import { ParsedPagination } from '../common/pagination';
@@ -38,6 +43,18 @@ const accountReceivableInclude = {
       paymentMethod: true,
       total: true,
       createdAt: true
+    }
+  },
+  cashMovement: {
+    select: {
+      id: true,
+      type: true,
+      source: true,
+      amount: true,
+      occurredAt: true,
+      description: true,
+      document: true,
+      notes: true
     }
   },
   receivedBy: {
@@ -198,6 +215,12 @@ export class AccountsReceivableService {
         ? {
             ...accountReceivable.sale,
             total: this.decimalToNumber(accountReceivable.sale.total)
+          }
+        : null,
+      cashMovement: accountReceivable.cashMovement
+        ? {
+            ...accountReceivable.cashMovement,
+            amount: this.decimalToNumber(accountReceivable.cashMovement.amount)
           }
         : null,
       receivedBy: accountReceivable.receivedBy,
@@ -368,7 +391,9 @@ export class AccountsReceivableService {
           id: true,
           storeId: true,
           status: true,
-          amount: true
+          amount: true,
+          description: true,
+          document: true
         }
       });
 
@@ -397,6 +422,21 @@ export class AccountsReceivableService {
           receivedAmount,
           receiptMethod: input.receiptMethod.trim(),
           receiptNotes: input.receiptNotes?.trim()
+        }
+      });
+
+      await tx.cashMovement.create({
+        data: {
+          storeId: accountReceivable.storeId,
+          userId: user.id,
+          accountReceivableId: accountReceivable.id,
+          type: CashMovementType.INFLOW,
+          source: CashMovementSource.ACCOUNT_RECEIVABLE,
+          amount: receivedAmount,
+          occurredAt: receivedAt,
+          description: `Recebimento de conta a receber: ${accountReceivable.description}`,
+          document: accountReceivable.document,
+          notes: input.receiptNotes?.trim()
         }
       });
 

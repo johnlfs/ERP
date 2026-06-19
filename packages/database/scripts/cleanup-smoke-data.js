@@ -272,8 +272,38 @@ async function main() {
     ]
   };
 
+  const cashMovementWhere = {
+    OR: [
+      {
+        document: {
+          startsWith: 'SMOKE-'
+        }
+      },
+      {
+        notes: {
+          contains: 'smoke',
+          mode: 'insensitive'
+        }
+      },
+      {
+        accountPayable: {
+          is: accountsPayableWhere
+        }
+      },
+      {
+        accountReceivable: {
+          is: accountsReceivableWhere
+        }
+      }
+    ]
+  };
+
   const deletedStockMovements = await prisma.stockMovement.deleteMany({
     where: stockMovementWhere
+  });
+
+  const deletedCashMovements = await prisma.cashMovement.deleteMany({
+    where: cashMovementWhere
   });
 
   const deletedAccountsReceivable = await prisma.accountReceivable.deleteMany({
@@ -355,6 +385,7 @@ async function main() {
       {
         status: 'ok',
         deletedStockMovements: deletedStockMovements.count,
+        deletedCashMovements: deletedCashMovements.count,
         deletedAccountsReceivable: deletedAccountsReceivable.count,
         deletedAccountsPayable: deletedAccountsPayable.count,
         deletedPurchaseItems: deletedPurchaseItems.count,
