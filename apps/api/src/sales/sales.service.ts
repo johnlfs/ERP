@@ -6,6 +6,7 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import {
+  AccountReceivableStatus,
   PaymentMethod,
   Prisma,
   ProductStatus,
@@ -63,6 +64,24 @@ const saleInclude = {
         }
       }
     }
+  },
+  accountReceivable: {
+    select: {
+      id: true,
+      storeId: true,
+      customerId: true,
+      saleId: true,
+      status: true,
+      amount: true,
+      dueDate: true,
+      receivedAt: true,
+      receivedByUserId: true,
+      receivedAmount: true,
+      receiptMethod: true,
+      canceledAt: true,
+      canceledByUserId: true,
+      cancellationReason: true
+    }
   }
 } satisfies Prisma.SaleInclude;
 
@@ -76,6 +95,12 @@ const saleCancellationInclude = {
           currentStock: true
         }
       }
+    }
+  },
+  accountReceivable: {
+    select: {
+      id: true,
+      status: true
     }
   }
 } satisfies Prisma.SaleInclude;
@@ -141,6 +166,15 @@ export class SalesService {
         },
         createdAt: item.createdAt
       })),
+      accountReceivable: sale.accountReceivable
+        ? {
+            ...sale.accountReceivable,
+            amount: this.decimalToNumber(sale.accountReceivable.amount),
+            receivedAmount: sale.accountReceivable.receivedAmount === null
+              ? null
+              : this.decimalToNumber(sale.accountReceivable.receivedAmount)
+          }
+        : null,
       createdAt: sale.createdAt,
       updatedAt: sale.updatedAt
     };
@@ -168,6 +202,17 @@ export class SalesService {
         message: 'Venda já está cancelada'
       });
     }
+
+    if (sale.accountReceivable?.status === AccountReceivableStatus.RECEIVED) {
+      throw new BadRequestException({
+        code: 'SALE_ACCOUNT_RECEIVABLE_ALREADY_RECEIVED',
+        message: 'Venda com conta a receber já recebida não pode ser cancelada'
+      });
+    }
+  }
+
+  private resolveReceivableDueDate(dueDate?: string) {
+    return dueDate ? new Date(dueDate) : new Date();
   }
 
   private async validateCustomerForSale(
@@ -430,6 +475,19 @@ export class SalesService {
         });
       }
 
+      await tx.accountReceivable.create({
+        data: {
+          storeId: input.storeId,
+          customerId: input.customerId,
+          saleId: sale.id,
+          description: `Venda ${input.document ?? sale.id}`,
+          document: input.document,
+          amount: total,
+          dueDate: this.resolveReceivableDueDate(input.dueDate),
+          notes: input.notes
+        }
+      });
+
       const createdSale = await tx.sale.findUnique({
         where: {
           id: sale.id
@@ -487,6 +545,20 @@ export class SalesService {
           },
           data: {
             currentStock: afterStock
+          }
+        });
+      }
+
+      if (sale.accountReceivable) {
+        await tx.accountReceivable.update({
+          where: {
+            id: sale.accountReceivable.id
+          },
+          data: {
+            status: AccountReceivableStatus.CANCELED,
+            canceledAt: new Date(),
+            canceledByUserId: user.id,
+            cancellationReason: input.reason
           }
         });
       }

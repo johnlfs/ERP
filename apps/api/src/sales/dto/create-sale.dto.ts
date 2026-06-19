@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  IsDateString,
   IsArray,
   IsEnum,
   IsNotEmpty,
@@ -144,6 +145,19 @@ export class CreateSaleDto {
     message: 'discount não pode ser negativo'
   })
   discount?: number;
+
+  @ApiPropertyOptional({
+    description: 'Data de vencimento da conta a receber gerada pela venda',
+    example: '2030-03-01T00:00:00.000Z'
+  })
+  @IsOptional()
+  @IsDateString(
+    {},
+    {
+      message: 'dueDate deve ser uma data ISO válida'
+    }
+  )
+  dueDate?: string;
 
   @ApiPropertyOptional({
     description: 'Documento ou referência externa',

@@ -134,8 +134,32 @@ async function main() {
     ]
   };
 
+  const accountReceivableWhere = {
+    OR: [
+      {
+        document: {
+          startsWith: 'SMOKE-SALE-'
+        }
+      },
+      {
+        sale: {
+          is: saleWhere
+        }
+      },
+      {
+        customer: {
+          is: customerWhere
+        }
+      }
+    ]
+  };
+
   const deletedStockMovements = await prisma.stockMovement.deleteMany({
     where: stockMovementWhere
+  });
+
+  const deletedAccountsReceivable = await prisma.accountReceivable.deleteMany({
+    where: accountReceivableWhere
   });
 
   const deletedAccountsPayable = await prisma.accountPayable.deleteMany({
@@ -205,6 +229,7 @@ async function main() {
       {
         status: 'ok',
         deletedStockMovements: deletedStockMovements.count,
+        deletedAccountsReceivable: deletedAccountsReceivable.count,
         deletedAccountsPayable: deletedAccountsPayable.count,
         deletedPurchaseItems: deletedPurchaseItems.count,
         deletedPurchases: deletedPurchases.count,
