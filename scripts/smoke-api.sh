@@ -243,6 +243,11 @@ AUTH_TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c 'import sys,json; print
 
 json_request GET "/api/v1/auth/me" "200" "" >/dev/null
 
+json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&status=INVALID" "400" "" >/dev/null
+json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&storeId=abc" "400" "" >/dev/null
+json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&dueDateFrom=2030-02-01T00:00:00.000Z&dueDateTo=2030-01-01T00:00:00.000Z" "400" "" >/dev/null
+json_request GET "/api/v1/accounts-payable/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
+
 SMOKE_SUFFIX="$(date +%s)"
 
 CATEGORY_PAYLOAD="$(cat <<JSON
@@ -807,23 +812,35 @@ PURCHASE_ID="$(printf '%s' "$PURCHASE_RESPONSE" | python3 -c 'import sys,json; p
 ACCOUNT_PAYABLE_ID="$(printf '%s' "$PURCHASE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["accountPayable"]["id"])')"
 
 json_request GET "/api/v1/purchases?page=1&pageSize=10&search=SMOKE-PURCHASE" "200" "" >/dev/null
-json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&search=SMOKE-PURCHASE" "200" "" >/dev/null
-json_request GET "/api/v1/accounts-payable/${ACCOUNT_PAYABLE_ID}" "200" "" >/dev/null
+ACCOUNTS_PAYABLE_SEARCH_RESPONSE="$(json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&search=SMOKE-PURCHASE" "200" "" )"
+ACCOUNT_PAYABLE_BY_ID_RESPONSE="$(json_request GET "/api/v1/accounts-payable/${ACCOUNT_PAYABLE_ID}" "200" "" )"
 ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE="$(json_request GET "/api/v1/accounts-payable?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNTS_PAYABLE_BY_STATUS_OPEN_RESPONSE="$(json_request GET "/api/v1/accounts-payable?status=OPEN&purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNTS_PAYABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE="$(json_request GET "/api/v1/accounts-payable?status=CANCELED&purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNTS_PAYABLE_BY_SUPPLIER_RESPONSE="$(json_request GET "/api/v1/accounts-payable?supplierId=${SUPPLIER_ID}&search=SMOKE-PURCHASE&page=1&pageSize=10" "200" "" )"
+ACCOUNTS_PAYABLE_BY_STORE_RESPONSE="$(json_request GET "/api/v1/accounts-payable?storeId=${STORE_ID}&search=SMOKE-PURCHASE&page=1&pageSize=10" "200" "" )"
+ACCOUNTS_PAYABLE_BY_DUE_DATE_RESPONSE="$(json_request GET "/api/v1/accounts-payable?dueDateFrom=2030-01-01T00:00:00.000Z&dueDateTo=2030-02-01T00:00:00.000Z&search=SMOKE-PURCHASE&page=1&pageSize=10" "200" "" )"
 json_request GET "/api/v1/purchases/${PURCHASE_ID}" "200" "" >/dev/null
 
 PURCHASE_MOVEMENTS_RESPONSE="$(json_request GET "/api/v1/stock-movements?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 
 PRODUCT_AFTER_PURCHASE_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
 
-PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PURCHASE_MOVEMENTS_RESPONSE="$PURCHASE_MOVEMENTS_RESPONSE" ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE="$ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE" ACCOUNT_PAYABLE_ID="$ACCOUNT_PAYABLE_ID" PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_RESPONSE="$PRODUCT_AFTER_PURCHASE_RESPONSE" PURCHASE_ID="$PURCHASE_ID" SUPPLIER_ID="$SUPPLIER_ID" PRODUCT_ID="$PRODUCT_ID" python3 - <<'PYVALIDATION'
+PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PURCHASE_MOVEMENTS_RESPONSE="$PURCHASE_MOVEMENTS_RESPONSE" ACCOUNTS_PAYABLE_SEARCH_RESPONSE="$ACCOUNTS_PAYABLE_SEARCH_RESPONSE" ACCOUNT_PAYABLE_BY_ID_RESPONSE="$ACCOUNT_PAYABLE_BY_ID_RESPONSE" ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE="$ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE" ACCOUNTS_PAYABLE_BY_STATUS_OPEN_RESPONSE="$ACCOUNTS_PAYABLE_BY_STATUS_OPEN_RESPONSE" ACCOUNTS_PAYABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE="$ACCOUNTS_PAYABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE" ACCOUNTS_PAYABLE_BY_SUPPLIER_RESPONSE="$ACCOUNTS_PAYABLE_BY_SUPPLIER_RESPONSE" ACCOUNTS_PAYABLE_BY_STORE_RESPONSE="$ACCOUNTS_PAYABLE_BY_STORE_RESPONSE" ACCOUNTS_PAYABLE_BY_DUE_DATE_RESPONSE="$ACCOUNTS_PAYABLE_BY_DUE_DATE_RESPONSE" ACCOUNT_PAYABLE_ID="$ACCOUNT_PAYABLE_ID" PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_RESPONSE="$PRODUCT_AFTER_PURCHASE_RESPONSE" PURCHASE_ID="$PURCHASE_ID" SUPPLIER_ID="$SUPPLIER_ID" PRODUCT_ID="$PRODUCT_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 
 purchase = json.loads(os.environ["PURCHASE_RESPONSE"])["data"]
 purchase_movements_payload = json.loads(os.environ["PURCHASE_MOVEMENTS_RESPONSE"])
 purchase_movements = purchase_movements_payload["data"]
+accounts_payable_search = json.loads(os.environ["ACCOUNTS_PAYABLE_SEARCH_RESPONSE"])["data"]
+account_payable_by_id = json.loads(os.environ["ACCOUNT_PAYABLE_BY_ID_RESPONSE"])["data"]
 accounts_payable_by_purchase = json.loads(os.environ["ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE"])["data"]
+accounts_payable_by_status_open = json.loads(os.environ["ACCOUNTS_PAYABLE_BY_STATUS_OPEN_RESPONSE"])["data"]
+accounts_payable_by_status_canceled_before = json.loads(os.environ["ACCOUNTS_PAYABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE"])["data"]
+accounts_payable_by_supplier = json.loads(os.environ["ACCOUNTS_PAYABLE_BY_SUPPLIER_RESPONSE"])["data"]
+accounts_payable_by_store = json.loads(os.environ["ACCOUNTS_PAYABLE_BY_STORE_RESPONSE"])["data"]
+accounts_payable_by_due_date = json.loads(os.environ["ACCOUNTS_PAYABLE_BY_DUE_DATE_RESPONSE"])["data"]
 account_payable_id = os.environ["ACCOUNT_PAYABLE_ID"]
 before_product = json.loads(os.environ["PRODUCT_BEFORE_PURCHASE_RESPONSE"])["data"]
 after_product = json.loads(os.environ["PRODUCT_AFTER_PURCHASE_RESPONSE"])["data"]
@@ -831,6 +848,7 @@ after_product = json.loads(os.environ["PRODUCT_AFTER_PURCHASE_RESPONSE"])["data"
 purchase_id = os.environ["PURCHASE_ID"]
 supplier_id = os.environ["SUPPLIER_ID"]
 product_id = os.environ["PRODUCT_ID"]
+store_id = os.environ["STORE_ID"]
 
 assert purchase["id"] == purchase_id, "ID da compra retornado não bate"
 assert purchase["supplierId"] == supplier_id, "supplierId da compra não bate"
@@ -845,11 +863,52 @@ assert account_payable["amount"] == purchase["total"], "Conta a pagar deveria te
 assert account_payable["document"] == purchase["document"], "Documento da conta a pagar deveria bater com a compra"
 assert account_payable["dueDate"].startswith("2030-01-31"), "dueDate da conta a pagar deveria ser 2030-01-31"
 
+assert account_payable_by_id["id"] == account_payable_id, "Busca de conta por ID retornou id incorreto"
+assert account_payable_by_id["purchaseId"] == purchase_id, "Busca de conta por ID retornou purchaseId incorreto"
+assert account_payable_by_id["supplierId"] == supplier_id, "Busca de conta por ID retornou supplierId incorreto"
+assert account_payable_by_id["storeId"] == store_id, "Busca de conta por ID retornou storeId incorreto"
+assert account_payable_by_id["amount"] == purchase["total"], "Busca de conta por ID retornou amount incorreto"
+assert account_payable_by_id["status"] == "OPEN", "Busca de conta por ID deveria estar OPEN"
+assert account_payable_by_id["dueDate"].startswith("2030-01-31"), "Busca de conta por ID deveria retornar dueDate da compra"
+
+assert any(account["id"] == account_payable_id for account in accounts_payable_search), (
+    "Filtro de contas por search deveria conter a conta gerada pela compra"
+)
+
 assert len(accounts_payable_by_purchase) == 1, "Filtro de contas a pagar por purchaseId deveria retornar 1 registro"
 filtered_payable = accounts_payable_by_purchase[0]
 assert filtered_payable["id"] == account_payable_id, "Conta filtrada por purchaseId veio com id incorreto"
 assert filtered_payable["purchaseId"] == purchase_id, "Conta filtrada por purchaseId veio com purchaseId incorreto"
 assert filtered_payable["status"] == "OPEN", "Conta filtrada por purchaseId deveria estar OPEN"
+
+assert len(accounts_payable_by_status_open) == 1, "Filtro status=OPEN por compra deveria retornar 1 registro"
+assert accounts_payable_by_status_open[0]["id"] == account_payable_id, "Filtro status=OPEN retornou conta incorreta"
+assert accounts_payable_by_status_open[0]["status"] == "OPEN", "Filtro status=OPEN retornou status incorreto"
+
+assert len(accounts_payable_by_status_canceled_before) == 0, (
+    "Filtro status=CANCELED antes do cancelamento deveria retornar 0 registros"
+)
+
+assert any(account["id"] == account_payable_id for account in accounts_payable_by_supplier), (
+    "Filtro supplierId deveria conter a conta gerada pela compra"
+)
+assert all(account["supplierId"] == supplier_id for account in accounts_payable_by_supplier), (
+    "Filtro supplierId retornou conta de outro fornecedor"
+)
+
+assert any(account["id"] == account_payable_id for account in accounts_payable_by_store), (
+    "Filtro storeId deveria conter a conta gerada pela compra"
+)
+assert all(account["storeId"] == store_id for account in accounts_payable_by_store), (
+    "Filtro storeId retornou conta de outra loja"
+)
+
+assert any(account["id"] == account_payable_id for account in accounts_payable_by_due_date), (
+    "Filtro por intervalo de vencimento deveria conter a conta gerada pela compra"
+)
+assert all(account["dueDate"].startswith("2030-01-31") for account in accounts_payable_by_due_date), (
+    "Filtro por intervalo de vencimento retornou conta fora da data esperada"
+)
 
 assert len(purchase["items"]) == 1, "Compra deveria ter 1 item"
 
@@ -949,8 +1008,10 @@ PYVALIDATION
 
 PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/stock-movements?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/accounts-payable?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNT_PAYABLE_STATUS_CANCELED_AFTER_RESPONSE="$(json_request GET "/api/v1/accounts-payable?status=CANCELED&purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNT_PAYABLE_STATUS_OPEN_AFTER_RESPONSE="$(json_request GET "/api/v1/accounts-payable?status=OPEN&purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 
-ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE="$ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE" ACCOUNT_PAYABLE_ID="$ACCOUNT_PAYABLE_ID" PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE" PURCHASE_ID="$PURCHASE_ID" python3 - <<'PYVALIDATION'
+ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE="$ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE" ACCOUNT_PAYABLE_STATUS_CANCELED_AFTER_RESPONSE="$ACCOUNT_PAYABLE_STATUS_CANCELED_AFTER_RESPONSE" ACCOUNT_PAYABLE_STATUS_OPEN_AFTER_RESPONSE="$ACCOUNT_PAYABLE_STATUS_OPEN_AFTER_RESPONSE" ACCOUNT_PAYABLE_ID="$ACCOUNT_PAYABLE_ID" PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE" PURCHASE_ID="$PURCHASE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 
@@ -958,6 +1019,8 @@ purchase_id = os.environ["PURCHASE_ID"]
 payload = json.loads(os.environ["PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE"])
 data = payload["data"]
 account_payables = json.loads(os.environ["ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE"])["data"]
+account_payables_status_canceled = json.loads(os.environ["ACCOUNT_PAYABLE_STATUS_CANCELED_AFTER_RESPONSE"])["data"]
+account_payables_status_open = json.loads(os.environ["ACCOUNT_PAYABLE_STATUS_OPEN_AFTER_RESPONSE"])["data"]
 account_payable_id = os.environ["ACCOUNT_PAYABLE_ID"]
 
 assert len(account_payables) == 1, f"Filtro de contas por compra deveria retornar 1 registro, veio {len(account_payables)}"
@@ -965,6 +1028,24 @@ account_payable = account_payables[0]
 assert account_payable["id"] == account_payable_id, "Conta a pagar filtrada após cancelamento veio com id incorreto"
 assert account_payable["status"] == "CANCELED", "Conta a pagar deveria estar CANCELED após cancelar compra"
 assert account_payable["canceledAt"] is not None, "Conta a pagar deveria ter canceledAt após cancelar compra"
+assert account_payable["canceledByUserId"] is not None, "Conta a pagar deveria ter canceledByUserId após cancelar compra"
+assert account_payable["cancellationReason"] == "Cancelamento de compra pelo smoke test", (
+    "Conta a pagar deveria manter o mesmo motivo de cancelamento da compra"
+)
+
+assert len(account_payables_status_canceled) == 1, (
+    f"Filtro status=CANCELED após cancelamento deveria retornar 1 registro, veio {len(account_payables_status_canceled)}"
+)
+assert account_payables_status_canceled[0]["id"] == account_payable_id, (
+    "Filtro status=CANCELED após cancelamento retornou conta incorreta"
+)
+assert account_payables_status_canceled[0]["status"] == "CANCELED", (
+    "Filtro status=CANCELED após cancelamento retornou status incorreto"
+)
+
+assert len(account_payables_status_open) == 0, (
+    f"Filtro status=OPEN após cancelamento deveria retornar 0 registros, veio {len(account_payables_status_open)}"
+)
 
 assert len(data) >= 2, f"Filtro por purchaseId deveria retornar pelo menos 2 movimentações, veio {len(data)}"
 

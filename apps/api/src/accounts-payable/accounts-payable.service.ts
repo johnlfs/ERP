@@ -1,4 +1,10 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
 import { AccountPayableStatus, Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { ParsedPagination } from '../common/pagination';
@@ -83,6 +89,23 @@ export class AccountsPayableService {
     }
   }
 
+
+  private ensureValidDueDateRange(dueDateFrom?: string, dueDateTo?: string) {
+    if (!dueDateFrom || !dueDateTo) {
+      return;
+    }
+
+    const from = new Date(dueDateFrom);
+    const to = new Date(dueDateTo);
+
+    if (from.getTime() > to.getTime()) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_PAYABLE_INVALID_DUE_DATE_RANGE',
+        message: 'dueDateFrom não pode ser maior que dueDateTo'
+      });
+    }
+  }
+
   private formatAccountPayable(accountPayable: AccountPayableWithRelations) {
     return {
       id: accountPayable.id,
@@ -126,6 +149,8 @@ export class AccountsPayableService {
     if (params.storeId) {
       this.ensureUserCanReadStore(params.user, params.storeId);
     }
+
+    this.ensureValidDueDateRange(params.dueDateFrom, params.dueDateTo);
 
     const search = params.search?.trim();
 
