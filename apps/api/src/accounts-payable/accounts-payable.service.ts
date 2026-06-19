@@ -154,6 +154,24 @@ export class AccountsPayableService {
     }
   }
 
+  private isUniqueConstraintError(error: unknown, fieldName: string) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+      return false;
+    }
+
+    if (error.code !== 'P2002') {
+      return false;
+    }
+
+    const target = error.meta?.target;
+
+    if (Array.isArray(target)) {
+      return target.includes(fieldName);
+    }
+
+    return String(target ?? '').includes(fieldName);
+  }
+
   private resolvePaidAmount(
     accountAmount: Prisma.Decimal,
     paidAmount?: number
@@ -447,6 +465,15 @@ export class AccountsPayableService {
       }
 
       return this.formatAccountPayable(paidAccountPayable);
+    }).catch((error) => {
+      if (this.isUniqueConstraintError(error, 'accountPayableId')) {
+        throw new BadRequestException({
+          code: 'ACCOUNT_PAYABLE_CASH_MOVEMENT_ALREADY_EXISTS',
+          message: 'Movimento de caixa desta conta a pagar já existe'
+        });
+      }
+
+      throw error;
     });
   }
 }
