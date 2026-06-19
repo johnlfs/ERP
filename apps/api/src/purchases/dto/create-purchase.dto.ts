@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsDateString,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -114,6 +115,19 @@ export class CreatePurchaseDto {
   })
   @Type(() => CreatePurchaseItemDto)
   items!: CreatePurchaseItemDto[];
+
+  @ApiPropertyOptional({
+    description: 'Data de vencimento da conta a pagar gerada pela compra',
+    example: '2030-01-31T00:00:00.000Z'
+  })
+  @IsOptional()
+  @IsDateString(
+    {},
+    {
+      message: 'dueDate deve ser uma data ISO válida'
+    }
+  )
+  dueDate?: string;
 
   @ApiPropertyOptional({
     description: 'Desconto geral da compra',

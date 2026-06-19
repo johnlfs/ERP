@@ -6,6 +6,7 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import {
+  AccountPayableStatus,
   Prisma,
   ProductStatus,
   PurchaseStatus,
@@ -49,6 +50,23 @@ const purchaseInclude = {
       id: true,
       name: true,
       email: true
+    }
+  },
+  accountPayable: {
+    select: {
+      id: true,
+      status: true,
+      description: true,
+      document: true,
+      amount: true,
+      dueDate: true,
+      paidAt: true,
+      canceledAt: true,
+      canceledByUserId: true,
+      cancellationReason: true,
+      notes: true,
+      createdAt: true,
+      updatedAt: true
     }
   },
   items: {
@@ -143,6 +161,12 @@ export class PurchasesService {
       supplier: purchase.supplier,
       user: purchase.user,
       canceledBy: purchase.canceledBy,
+      accountPayable: purchase.accountPayable
+        ? {
+            ...purchase.accountPayable,
+            amount: this.decimalToNumber(purchase.accountPayable.amount)
+          }
+        : null,
       items: purchase.items.map((item) => ({
         id: item.id,
         purchaseId: item.purchaseId,
@@ -463,6 +487,24 @@ export class PurchasesService {
         }
       });
 
+      const payableDueDate = input.dueDate ? new Date(input.dueDate) : new Date();
+
+      await tx.accountPayable.create({
+        data: {
+          storeId: input.storeId,
+          supplierId: input.supplierId,
+          purchaseId: purchase.id,
+          status: AccountPayableStatus.OPEN,
+          description: input.document
+            ? `Conta a pagar da compra ${input.document}`
+            : `Conta a pagar da compra ${purchase.id}`,
+          document: input.document,
+          amount: total,
+          dueDate: payableDueDate,
+          notes: input.notes
+        }
+      });
+
       for (const item of purchaseItems) {
         const product = productsById.get(item.productId);
 
@@ -530,6 +572,23 @@ export class PurchasesService {
       ensureUserCanWriteStore(user, purchase.storeId);
       this.ensurePurchaseCanBeCanceled(purchase);
 
+      const accountPayable = await tx.accountPayable.findUnique({
+        where: {
+          purchaseId: purchase.id
+        },
+        select: {
+          id: true,
+          status: true
+        }
+      });
+
+      if (accountPayable?.status === AccountPayableStatus.PAID) {
+        throw new BadRequestException({
+          code: 'PURCHASE_PAYABLE_ALREADY_PAID',
+          message: 'Compra com conta a pagar já quitada não pode ser cancelada'
+        });
+      }
+
       for (const item of purchase.items) {
         const beforeStock = new Prisma.Decimal(item.product.currentStock);
         const quantity = new Prisma.Decimal(item.quantity);
@@ -544,17 +603,33 @@ export class PurchasesService {
         }
       }
 
+      const canceledAt = new Date();
+
       await tx.purchase.update({
         where: {
           id: purchase.id
         },
         data: {
           status: PurchaseStatus.CANCELED,
-          canceledAt: new Date(),
+          canceledAt,
           canceledByUserId: user.id,
           cancellationReason: input.reason
         }
       });
+
+      if (accountPayable && accountPayable.status === AccountPayableStatus.OPEN) {
+        await tx.accountPayable.update({
+          where: {
+            id: accountPayable.id
+          },
+          data: {
+            status: AccountPayableStatus.CANCELED,
+            canceledAt,
+            canceledByUserId: user.id,
+            cancellationReason: input.reason
+          }
+        });
+      }
 
       for (const item of purchase.items) {
         const beforeStock = new Prisma.Decimal(item.product.currentStock);

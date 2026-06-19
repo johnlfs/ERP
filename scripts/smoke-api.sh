@@ -116,6 +116,7 @@ request GET "/api/v1/sales?page=1&pageSize=10" "401"
 request GET "/api/v1/customers?page=1&pageSize=10" "401"
 request GET "/api/v1/suppliers?page=1&pageSize=10" "401"
 request GET "/api/v1/purchases?page=1&pageSize=10" "401"
+request GET "/api/v1/accounts-payable?page=1&pageSize=10" "401"
 
 UNAUTHORIZED_CATEGORY_PAYLOAD="$(cat <<JSON
 {
@@ -786,6 +787,7 @@ PURCHASE_PAYLOAD="$(cat <<JSON
   "supplierId": "${SUPPLIER_ID}",
   "document": "SMOKE-PURCHASE-${SMOKE_SUFFIX}",
   "notes": "Compra criada pelo smoke test",
+  "dueDate": "2030-01-31T00:00:00.000Z",
   "items": [
     {
       "productId": "${PRODUCT_ID}",
@@ -802,21 +804,27 @@ JSON
 PURCHASE_RESPONSE="$(json_request POST "/api/v1/purchases" "201" "$PURCHASE_PAYLOAD")"
 
 PURCHASE_ID="$(printf '%s' "$PURCHASE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+ACCOUNT_PAYABLE_ID="$(printf '%s' "$PURCHASE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["accountPayable"]["id"])')"
 
 json_request GET "/api/v1/purchases?page=1&pageSize=10&search=SMOKE-PURCHASE" "200" "" >/dev/null
+json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&search=SMOKE-PURCHASE" "200" "" >/dev/null
+json_request GET "/api/v1/accounts-payable/${ACCOUNT_PAYABLE_ID}" "200" "" >/dev/null
+ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE="$(json_request GET "/api/v1/accounts-payable?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 json_request GET "/api/v1/purchases/${PURCHASE_ID}" "200" "" >/dev/null
 
 PURCHASE_MOVEMENTS_RESPONSE="$(json_request GET "/api/v1/stock-movements?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 
 PRODUCT_AFTER_PURCHASE_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
 
-PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PURCHASE_MOVEMENTS_RESPONSE="$PURCHASE_MOVEMENTS_RESPONSE" PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_RESPONSE="$PRODUCT_AFTER_PURCHASE_RESPONSE" PURCHASE_ID="$PURCHASE_ID" SUPPLIER_ID="$SUPPLIER_ID" PRODUCT_ID="$PRODUCT_ID" python3 - <<'PYVALIDATION'
+PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PURCHASE_MOVEMENTS_RESPONSE="$PURCHASE_MOVEMENTS_RESPONSE" ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE="$ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE" ACCOUNT_PAYABLE_ID="$ACCOUNT_PAYABLE_ID" PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_RESPONSE="$PRODUCT_AFTER_PURCHASE_RESPONSE" PURCHASE_ID="$PURCHASE_ID" SUPPLIER_ID="$SUPPLIER_ID" PRODUCT_ID="$PRODUCT_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 
 purchase = json.loads(os.environ["PURCHASE_RESPONSE"])["data"]
 purchase_movements_payload = json.loads(os.environ["PURCHASE_MOVEMENTS_RESPONSE"])
 purchase_movements = purchase_movements_payload["data"]
+accounts_payable_by_purchase = json.loads(os.environ["ACCOUNTS_PAYABLE_BY_PURCHASE_RESPONSE"])["data"]
+account_payable_id = os.environ["ACCOUNT_PAYABLE_ID"]
 before_product = json.loads(os.environ["PRODUCT_BEFORE_PURCHASE_RESPONSE"])["data"]
 after_product = json.loads(os.environ["PRODUCT_AFTER_PURCHASE_RESPONSE"])["data"]
 
@@ -828,6 +836,21 @@ assert purchase["id"] == purchase_id, "ID da compra retornado não bate"
 assert purchase["supplierId"] == supplier_id, "supplierId da compra não bate"
 assert purchase["supplier"]["id"] == supplier_id, "supplier.id da compra não bate"
 assert purchase["status"] == "RECEIVED", "Compra deveria ser RECEIVED"
+
+account_payable = purchase.get("accountPayable")
+assert account_payable is not None, "Compra deveria retornar accountPayable"
+assert account_payable["id"] == account_payable_id, "accountPayable.id da compra não bate"
+assert account_payable["status"] == "OPEN", "Conta a pagar da compra deveria iniciar OPEN"
+assert account_payable["amount"] == purchase["total"], "Conta a pagar deveria ter amount igual ao total da compra"
+assert account_payable["document"] == purchase["document"], "Documento da conta a pagar deveria bater com a compra"
+assert account_payable["dueDate"].startswith("2030-01-31"), "dueDate da conta a pagar deveria ser 2030-01-31"
+
+assert len(accounts_payable_by_purchase) == 1, "Filtro de contas a pagar por purchaseId deveria retornar 1 registro"
+filtered_payable = accounts_payable_by_purchase[0]
+assert filtered_payable["id"] == account_payable_id, "Conta filtrada por purchaseId veio com id incorreto"
+assert filtered_payable["purchaseId"] == purchase_id, "Conta filtrada por purchaseId veio com purchaseId incorreto"
+assert filtered_payable["status"] == "OPEN", "Conta filtrada por purchaseId deveria estar OPEN"
+
 assert len(purchase["items"]) == 1, "Compra deveria ter 1 item"
 
 item = purchase["items"][0]
@@ -894,6 +917,15 @@ assert purchase["cancellationReason"] == "Cancelamento de compra pelo smoke test
     f"cancellationReason inesperado: {purchase.get('cancellationReason')}"
 )
 
+account_payable = purchase.get("accountPayable")
+assert account_payable is not None, "Compra cancelada deveria retornar accountPayable"
+assert account_payable["status"] == "CANCELED", "Conta a pagar deveria ser cancelada junto com a compra"
+assert account_payable["canceledAt"] is not None, "Conta a pagar cancelada deveria ter canceledAt"
+assert account_payable["canceledByUserId"] is not None, "Conta a pagar cancelada deveria ter canceledByUserId"
+assert account_payable["cancellationReason"] == "Cancelamento de compra pelo smoke test", (
+    f"Motivo de cancelamento da conta inesperado: {account_payable.get('cancellationReason')}"
+)
+
 movements = purchase["stockMovements"]
 assert len(movements) >= 2, f"Compra cancelada deveria ter pelo menos 2 movimentos, veio {len(movements)}"
 
@@ -916,14 +948,23 @@ assert len(out_movements) >= 1, "Movimento OUT de reversão com quantidade 4 nã
 PYVALIDATION
 
 PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/stock-movements?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/accounts-payable?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 
-PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE" PURCHASE_ID="$PURCHASE_ID" python3 - <<'PYVALIDATION'
+ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE="$ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE" ACCOUNT_PAYABLE_ID="$ACCOUNT_PAYABLE_ID" PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE" PURCHASE_ID="$PURCHASE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 
 purchase_id = os.environ["PURCHASE_ID"]
 payload = json.loads(os.environ["PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE"])
 data = payload["data"]
+account_payables = json.loads(os.environ["ACCOUNT_PAYABLE_AFTER_CANCEL_RESPONSE"])["data"]
+account_payable_id = os.environ["ACCOUNT_PAYABLE_ID"]
+
+assert len(account_payables) == 1, f"Filtro de contas por compra deveria retornar 1 registro, veio {len(account_payables)}"
+account_payable = account_payables[0]
+assert account_payable["id"] == account_payable_id, "Conta a pagar filtrada após cancelamento veio com id incorreto"
+assert account_payable["status"] == "CANCELED", "Conta a pagar deveria estar CANCELED após cancelar compra"
+assert account_payable["canceledAt"] is not None, "Conta a pagar deveria ter canceledAt após cancelar compra"
 
 assert len(data) >= 2, f"Filtro por purchaseId deveria retornar pelo menos 2 movimentações, veio {len(data)}"
 
