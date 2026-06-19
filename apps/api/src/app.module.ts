@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { AppConfigModule } from './config/app-config.module';
 import { CustomersModule } from './customers/customers.module';
+import { FinancialAuditModule } from './financial-audit/financial-audit.module';
 import { DatabaseModule } from './database/database.module';
 import { ProductsModule } from './products/products.module';
 import { PurchasesModule } from './purchases/purchases.module';
@@ -30,7 +31,8 @@ import { SuppliersModule } from './suppliers/suppliers.module';
     StockAuditModule,
     StockMovementsModule,
     AccountsPayableModule,
-    AccountsReceivableModule
+    AccountsReceivableModule,
+    FinancialAuditModule
   ],
   controllers: [AppController]
 })

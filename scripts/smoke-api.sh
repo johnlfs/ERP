@@ -229,6 +229,7 @@ request PATCH "/api/v1/purchases/00000000-0000-0000-0000-000000000001/cancel" "4
 request PATCH "/api/v1/accounts-payable/00000000-0000-0000-0000-000000000001/pay" "401"
 request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000000001" "401"
 request GET "/api/v1/stock-audit/stores/${STORE_ID}/summary" "401"
+request GET "/api/v1/financial-audit/stores/${STORE_ID}/summary" "401"
 
 
 LOGIN_PAYLOAD="$(cat <<JSON
@@ -244,6 +245,8 @@ LOGIN_RESPONSE="$(json_request POST "/api/v1/auth/login" "201" "$LOGIN_PAYLOAD")
 AUTH_TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["accessToken"])')"
 
 json_request GET "/api/v1/auth/me" "200" "" >/dev/null
+
+json_request GET "/api/v1/financial-audit/stores/abc/summary" "400" "" >/dev/null
 
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&status=INVALID" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&storeId=abc" "400" "" >/dev/null
@@ -1510,6 +1513,72 @@ PYVALIDATION
 
 json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_PAYLOAD" >/dev/null
 json_request PATCH "/api/v1/purchases/${PAID_PURCHASE_ID}/cancel" "400" "$CANCEL_PURCHASE_PAYLOAD" >/dev/null
+
+FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$(json_request GET "/api/v1/financial-audit/stores/${STORE_ID}/summary" "200" "" )"
+
+FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE" SALE_RESPONSE="$SALE_RESPONSE" PURCHASE_RESPONSE="$PURCHASE_RESPONSE" PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+from decimal import Decimal
+
+summary = json.loads(os.environ["FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE"])["data"]
+sale = json.loads(os.environ["SALE_RESPONSE"])["data"]
+canceled_purchase = json.loads(os.environ["PURCHASE_RESPONSE"])["data"]
+paid_purchase = json.loads(os.environ["PAID_PURCHASE_RESPONSE"])["data"]
+store_id = os.environ["STORE_ID"]
+
+assert summary["storeId"] == store_id, "storeId do resumo financeiro não bate"
+assert summary["store"]["id"] == store_id, "store.id do resumo financeiro não bate"
+assert summary["isConsistent"] is True, "Resumo financeiro deveria estar consistente"
+assert summary["checks"]["accountsPayableStatusBreakdownMatchesTotal"] is True, (
+    "Resumo de contas a pagar deveria bater com total"
+)
+assert summary["checks"]["accountsReceivableStatusBreakdownMatchesTotal"] is True, (
+    "Resumo de contas a receber deveria bater com total"
+)
+
+accounts_payable = summary["accountsPayable"]
+accounts_receivable = summary["accountsReceivable"]
+
+for group_name, group in [("accountsPayable", accounts_payable), ("accountsReceivable", accounts_receivable)]:
+    assert "open" in group, f"{group_name} deveria ter open"
+    assert "canceled" in group, f"{group_name} deveria ter canceled"
+    assert "total" in group, f"{group_name} deveria ter total"
+    for bucket_name, bucket in group.items():
+        assert "count" in bucket, f"{group_name}.{bucket_name} deveria ter count"
+        assert "amount" in bucket, f"{group_name}.{bucket_name} deveria ter amount"
+        assert bucket["count"] >= 0, f"{group_name}.{bucket_name}.count não pode ser negativo"
+        Decimal(str(bucket["amount"]))
+
+expected_canceled_receivable_amount = Decimal(str(sale["total"]))
+expected_canceled_payable_amount = Decimal(str(canceled_purchase["total"]))
+expected_paid_payable_amount = Decimal(str(paid_purchase["total"]))
+
+assert accounts_receivable["canceled"]["count"] >= 1, (
+    "Resumo deveria ter pelo menos 1 conta a receber cancelada"
+)
+assert Decimal(str(accounts_receivable["canceled"]["amount"])) >= expected_canceled_receivable_amount, (
+    "Valor cancelado de contas a receber deveria contemplar a venda cancelada do smoke"
+)
+
+assert accounts_payable["canceled"]["count"] >= 1, (
+    "Resumo deveria ter pelo menos 1 conta a pagar cancelada"
+)
+assert Decimal(str(accounts_payable["canceled"]["amount"])) >= expected_canceled_payable_amount, (
+    "Valor cancelado de contas a pagar deveria contemplar a compra cancelada do smoke"
+)
+
+assert accounts_payable["paid"]["count"] >= 1, (
+    "Resumo deveria ter pelo menos 1 conta a pagar paga"
+)
+assert Decimal(str(accounts_payable["paid"]["amount"])) >= expected_paid_payable_amount, (
+    "Valor pago de contas a pagar deveria contemplar a compra paga do smoke"
+)
+
+assert Decimal(str(summary["netOpenAmount"])) == (
+    Decimal(str(accounts_receivable["open"]["amount"])) - Decimal(str(accounts_payable["open"]["amount"]))
+), "netOpenAmount deveria ser recebíveis em aberto menos pagáveis em aberto"
+PYVALIDATION
 
 json_request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
 
