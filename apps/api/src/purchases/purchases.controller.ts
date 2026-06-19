@@ -4,6 +4,7 @@ import {
   Get,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards
@@ -21,6 +22,7 @@ import {
   parsePagination
 } from '../common/pagination';
 import { validateUuidParam } from '../common/validation';
+import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { ListPurchasesQueryDto } from './dto/list-purchases-query.dto';
 import { PurchasesService } from './purchases.service';
@@ -85,6 +87,22 @@ export class PurchasesController {
     @CurrentUser() user: AuthenticatedUser
   ) {
     const purchase = await this.purchasesService.create(body, user);
+
+    return apiResponse(purchase);
+  }
+
+  @Patch(':id/cancel')
+  @ApiOperation({ summary: 'Cancela compra e reverte estoque' })
+  async cancel(
+    @Param('id') id: string,
+    @Body() body: CancelPurchaseDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const purchase = await this.purchasesService.cancel(
+      validateUuidParam(id, 'id'),
+      body,
+      user
+    );
 
     return apiResponse(purchase);
   }

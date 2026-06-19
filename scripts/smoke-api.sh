@@ -223,6 +223,7 @@ json_request POST "/api/v1/purchases" "401" "$UNAUTHORIZED_PURCHASE_PAYLOAD" >/d
 
 
 request PATCH "/api/v1/sales/00000000-0000-0000-0000-000000000001/cancel" "401"
+request PATCH "/api/v1/purchases/00000000-0000-0000-0000-000000000001/cancel" "401"
 
 
 LOGIN_PAYLOAD="$(cat <<JSON
@@ -813,6 +814,95 @@ assert after_cost_price == Decimal("11.25"), (
     f"costPrice após compra deveria ser 11.25, veio {after_cost_price}"
 )
 PYVALIDATION
+
+CANCEL_PURCHASE_PAYLOAD="$(cat <<JSON
+{
+  "reason": "Cancelamento de compra pelo smoke test"
+}
+JSON
+)"
+
+CANCELED_PURCHASE_RESPONSE="$(json_request PATCH "/api/v1/purchases/${PURCHASE_ID}/cancel" "200" "$CANCEL_PURCHASE_PAYLOAD")"
+
+CANCELED_PURCHASE_RESPONSE="$CANCELED_PURCHASE_RESPONSE" PURCHASE_ID="$PURCHASE_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+
+payload = json.loads(os.environ["CANCELED_PURCHASE_RESPONSE"])
+purchase = payload["data"]
+purchase_id = os.environ["PURCHASE_ID"]
+
+assert purchase["id"] == purchase_id, "ID da compra cancelada não bate"
+assert purchase["status"] == "CANCELED", f"Status esperado CANCELED, veio {purchase.get('status')}"
+assert purchase["canceledAt"] is not None, "canceledAt deveria estar preenchido"
+assert purchase["canceledByUserId"] is not None, "canceledByUserId deveria estar preenchido"
+assert purchase["cancellationReason"] == "Cancelamento de compra pelo smoke test", (
+    f"cancellationReason inesperado: {purchase.get('cancellationReason')}"
+)
+
+movements = purchase["stockMovements"]
+assert len(movements) >= 2, f"Compra cancelada deveria ter pelo menos 2 movimentos, veio {len(movements)}"
+
+types = [movement["type"] for movement in movements]
+assert "IN" in types, f"Movimento IN original não encontrado. Tipos: {types}"
+assert "OUT" in types, f"Movimento OUT de reversão não encontrado. Tipos: {types}"
+
+for movement in movements:
+    assert movement["purchaseId"] == purchase_id, (
+        f"purchaseId da movimentação diferente da compra: {movement.get('purchaseId')} != {purchase_id}"
+    )
+    assert movement["saleId"] is None, "Movimento de compra não deveria ter saleId"
+
+out_movements = [
+    movement for movement in movements
+    if movement["type"] == "OUT" and float(movement["quantity"]) == 4.0
+]
+
+assert len(out_movements) >= 1, "Movimento OUT de reversão com quantidade 4 não encontrado"
+PYVALIDATION
+
+PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/stock-movements?purchaseId=${PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+
+PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE" PURCHASE_ID="$PURCHASE_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+
+purchase_id = os.environ["PURCHASE_ID"]
+payload = json.loads(os.environ["PURCHASE_MOVEMENTS_AFTER_CANCEL_RESPONSE"])
+data = payload["data"]
+
+assert len(data) >= 2, f"Filtro por purchaseId deveria retornar pelo menos 2 movimentações, veio {len(data)}"
+
+types = [movement["type"] for movement in data]
+assert "IN" in types, f"Movimento IN da compra não encontrado no filtro. Tipos: {types}"
+assert "OUT" in types, f"Movimento OUT do cancelamento não encontrado no filtro. Tipos: {types}"
+
+for movement in data:
+    assert movement["purchaseId"] == purchase_id, (
+        f"purchaseId do movimento filtrado não bate: {movement.get('purchaseId')} != {purchase_id}"
+    )
+    assert movement["saleId"] is None, "Movimento filtrado por purchaseId não deveria ter saleId"
+PYVALIDATION
+
+PRODUCT_AFTER_PURCHASE_CANCEL_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
+
+PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_CANCEL_RESPONSE="$PRODUCT_AFTER_PURCHASE_CANCEL_RESPONSE" python3 - <<'PYVALIDATION'
+import json
+import os
+from decimal import Decimal
+
+before_product = json.loads(os.environ["PRODUCT_BEFORE_PURCHASE_RESPONSE"])["data"]
+after_cancel_product = json.loads(os.environ["PRODUCT_AFTER_PURCHASE_CANCEL_RESPONSE"])["data"]
+
+before_stock = Decimal(str(before_product["currentStock"]))
+after_cancel_stock = Decimal(str(after_cancel_product["currentStock"]))
+
+assert after_cancel_stock == before_stock, (
+    f"Estoque após cancelar compra deveria voltar para {before_stock}, veio {after_cancel_stock}"
+)
+PYVALIDATION
+
+json_request PATCH "/api/v1/purchases/${PURCHASE_ID}/cancel" "400" "$CANCEL_PURCHASE_PAYLOAD" >/dev/null
 
 PURCHASE_WITH_DUPLICATED_PRODUCTS_PAYLOAD="$(cat <<JSON
 {

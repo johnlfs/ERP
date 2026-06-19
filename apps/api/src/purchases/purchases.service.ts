@@ -15,6 +15,7 @@ import { AuthenticatedUser } from '../auth/auth.types';
 import { ensureUserCanWriteStore } from '../auth/store-access';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
+import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 
 const purchaseInclude = {
@@ -37,6 +38,13 @@ const purchaseInclude = {
     }
   },
   user: {
+    select: {
+      id: true,
+      name: true,
+      email: true
+    }
+  },
+  canceledBy: {
     select: {
       id: true,
       name: true,
@@ -74,8 +82,26 @@ const purchaseInclude = {
   }
 } satisfies Prisma.PurchaseInclude;
 
+const purchaseCancellationInclude = {
+  items: {
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          currentStock: true
+        }
+      }
+    }
+  }
+} satisfies Prisma.PurchaseInclude;
+
 type PurchaseWithRelations = Prisma.PurchaseGetPayload<{
   include: typeof purchaseInclude;
+}>;
+
+type PurchaseForCancellation = Prisma.PurchaseGetPayload<{
+  include: typeof purchaseCancellationInclude;
 }>;
 
 type FindAllPurchasesParams = {
@@ -110,9 +136,13 @@ export class PurchasesService {
       total: this.decimalToNumber(purchase.total),
       document: purchase.document,
       notes: purchase.notes,
+      canceledAt: purchase.canceledAt,
+      canceledByUserId: purchase.canceledByUserId,
+      cancellationReason: purchase.cancellationReason,
       store: purchase.store,
       supplier: purchase.supplier,
       user: purchase.user,
+      canceledBy: purchase.canceledBy,
       items: purchase.items.map((item) => ({
         id: item.id,
         purchaseId: item.purchaseId,
@@ -162,6 +192,15 @@ export class PurchasesService {
       throw new ForbiddenException({
         code: 'STORE_ACCESS_DENIED',
         message: 'Usuário não possui acesso à loja informada'
+      });
+    }
+  }
+
+  private ensurePurchaseCanBeCanceled(purchase: PurchaseForCancellation) {
+    if (purchase.status === PurchaseStatus.CANCELED) {
+      throw new BadRequestException({
+        code: 'PURCHASE_ALREADY_CANCELED',
+        message: 'Compra já está cancelada'
       });
     }
   }
@@ -472,6 +511,93 @@ export class PurchasesService {
       }
 
       return this.formatPurchase(createdPurchase);
+    });
+  }
+
+  async cancel(id: string, input: CancelPurchaseDto, user: AuthenticatedUser) {
+    return this.database.$transaction(async (tx) => {
+      const purchase = await tx.purchase.findUnique({
+        where: {
+          id
+        },
+        include: purchaseCancellationInclude
+      });
+
+      if (!purchase) {
+        throw new NotFoundException('Compra não encontrada');
+      }
+
+      ensureUserCanWriteStore(user, purchase.storeId);
+      this.ensurePurchaseCanBeCanceled(purchase);
+
+      for (const item of purchase.items) {
+        const beforeStock = new Prisma.Decimal(item.product.currentStock);
+        const quantity = new Prisma.Decimal(item.quantity);
+        const afterStock = beforeStock.minus(quantity);
+
+        if (afterStock.lessThan(0)) {
+          throw new BadRequestException({
+            code: 'INSUFFICIENT_STOCK_TO_CANCEL_PURCHASE',
+            message:
+              'Estoque insuficiente para cancelar a compra sem deixar saldo negativo'
+          });
+        }
+      }
+
+      await tx.purchase.update({
+        where: {
+          id: purchase.id
+        },
+        data: {
+          status: PurchaseStatus.CANCELED,
+          canceledAt: new Date(),
+          canceledByUserId: user.id,
+          cancellationReason: input.reason
+        }
+      });
+
+      for (const item of purchase.items) {
+        const beforeStock = new Prisma.Decimal(item.product.currentStock);
+        const quantity = new Prisma.Decimal(item.quantity);
+        const afterStock = beforeStock.minus(quantity);
+
+        await tx.stockMovement.create({
+          data: {
+            storeId: purchase.storeId,
+            productId: item.productId,
+            userId: user.id,
+            purchaseId: purchase.id,
+            type: StockMovementType.OUT,
+            quantity,
+            beforeStock,
+            afterStock,
+            reason: `Cancelamento de compra recebida: ${input.reason}`,
+            document: purchase.document
+          }
+        });
+
+        await tx.product.update({
+          where: {
+            id: item.productId
+          },
+          data: {
+            currentStock: afterStock
+          }
+        });
+      }
+
+      const canceledPurchase = await tx.purchase.findUnique({
+        where: {
+          id: purchase.id
+        },
+        include: purchaseInclude
+      });
+
+      if (!canceledPurchase) {
+        throw new NotFoundException('Compra não encontrada após cancelamento');
+      }
+
+      return this.formatPurchase(canceledPurchase);
     });
   }
 }
