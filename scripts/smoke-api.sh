@@ -224,6 +224,7 @@ json_request POST "/api/v1/purchases" "401" "$UNAUTHORIZED_PURCHASE_PAYLOAD" >/d
 
 request PATCH "/api/v1/sales/00000000-0000-0000-0000-000000000001/cancel" "401"
 request PATCH "/api/v1/purchases/00000000-0000-0000-0000-000000000001/cancel" "401"
+request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000000001" "401"
 
 
 LOGIN_PAYLOAD="$(cat <<JSON
@@ -903,6 +904,43 @@ assert after_cancel_stock == before_stock, (
 PYVALIDATION
 
 json_request PATCH "/api/v1/purchases/${PURCHASE_ID}/cancel" "400" "$CANCEL_PURCHASE_PAYLOAD" >/dev/null
+
+
+STOCK_AUDIT_RESPONSE="$(json_request GET "/api/v1/stock-audit/products/${PRODUCT_ID}" "200" "" )"
+
+STOCK_AUDIT_RESPONSE="$STOCK_AUDIT_RESPONSE" PRODUCT_ID="$PRODUCT_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+from decimal import Decimal
+
+payload = json.loads(os.environ["STOCK_AUDIT_RESPONSE"])
+audit = payload["data"]
+product_id = os.environ["PRODUCT_ID"]
+
+assert audit["productId"] == product_id, "productId da auditoria não bate"
+assert audit["product"]["id"] == product_id, "product.id da auditoria não bate"
+assert audit["isConsistent"] is True, "Auditoria de estoque deveria estar consistente"
+assert audit["isCurrentStockConsistent"] is True, "currentStock deveria bater com calculatedStock"
+assert audit["isMovementChainConsistent"] is True, "Cadeia de movimentações deveria estar consistente"
+assert audit["totalMovements"] == 6, f"Auditoria deveria encontrar 6 movimentações, veio {audit['totalMovements']}"
+assert audit["brokenTransitions"] == [], f"Não deveria haver quebras na cadeia: {audit['brokenTransitions']}"
+
+current_stock = Decimal(str(audit["currentStock"]))
+calculated_stock = Decimal(str(audit["calculatedStock"]))
+assert current_stock == calculated_stock, (
+    f"currentStock deveria ser igual ao calculatedStock: {current_stock} != {calculated_stock}"
+)
+
+latest = audit["latestMovement"]
+assert latest is not None, "latestMovement deveria estar preenchido"
+assert latest["productId"] == product_id, "latestMovement.productId não bate"
+assert latest["purchaseId"] is not None, "latestMovement deveria estar vinculado à compra"
+assert latest["saleId"] is None, "latestMovement de compra não deveria ter saleId"
+assert latest["type"] == "OUT", f"latestMovement deveria ser OUT após cancelamento da compra, veio {latest['type']}"
+assert Decimal(str(latest["quantity"])) == Decimal("4"), "latestMovement deveria ter quantidade 4"
+PYVALIDATION
+
+json_request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
 
 PURCHASE_WITH_DUPLICATED_PRODUCTS_PAYLOAD="$(cat <<JSON
 {

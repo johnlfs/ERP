@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { ProductsModule } from './products/products.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { SalesModule } from './sales/sales.module';
+import { StockAuditModule } from './stock-audit/stock-audit.module';
 import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { StoresModule } from './stores/stores.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
@@ -24,6 +25,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
     ProductsModule,
     PurchasesModule,
     SalesModule,
+    StockAuditModule,
     StockMovementsModule
   ],
   controllers: [AppController]
