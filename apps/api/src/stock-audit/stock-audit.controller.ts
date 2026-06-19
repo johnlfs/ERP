@@ -34,4 +34,18 @@ export class StockAuditController {
 
     return apiResponse(result);
   }
+
+  @Get('stores/:storeId/summary')
+  @ApiOperation({ summary: 'Resumo de consistência de estoque por loja' })
+  async auditStoreSummary(
+    @Param('storeId') storeId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const result = await this.stockAuditService.auditStoreSummary(
+      validateUuidParam(storeId, 'storeId'),
+      user
+    );
+
+    return apiResponse(result);
+  }
 }

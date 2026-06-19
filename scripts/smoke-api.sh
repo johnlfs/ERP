@@ -225,6 +225,7 @@ json_request POST "/api/v1/purchases" "401" "$UNAUTHORIZED_PURCHASE_PAYLOAD" >/d
 request PATCH "/api/v1/sales/00000000-0000-0000-0000-000000000001/cancel" "401"
 request PATCH "/api/v1/purchases/00000000-0000-0000-0000-000000000001/cancel" "401"
 request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000000001" "401"
+request GET "/api/v1/stock-audit/stores/${STORE_ID}/summary" "401"
 
 
 LOGIN_PAYLOAD="$(cat <<JSON
@@ -279,6 +280,58 @@ JSON
 PRODUCT_RESPONSE="$(json_request POST "/api/v1/products" "201" "$PRODUCT_PAYLOAD")"
 
 PRODUCT_ID="$(printf '%s' "$PRODUCT_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+PRODUCT_NO_MOVEMENTS_CODE="SMOKE-PROD-NOMOV-${SMOKE_SUFFIX}"
+PRODUCT_NO_MOVEMENTS_BARCODE="790${SMOKE_SUFFIX}"
+
+PRODUCT_NO_MOVEMENTS_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "categoryId": "${CATEGORY_ID}",
+  "internalCode": "${PRODUCT_NO_MOVEMENTS_CODE}",
+  "barcode": "${PRODUCT_NO_MOVEMENTS_BARCODE}",
+  "name": "Smoke Produto Sem Movimento ${SMOKE_SUFFIX}",
+  "description": "Produto sem movimentação criado pelo smoke test",
+  "costPrice": 5,
+  "salePrice": 9.9,
+  "ncm": "00000000",
+  "unit": "UN",
+  "minStock": 1,
+  "currentStock": 5
+}
+JSON
+)"
+
+PRODUCT_NO_MOVEMENTS_RESPONSE="$(json_request POST "/api/v1/products" "201" "$PRODUCT_NO_MOVEMENTS_PAYLOAD")"
+
+PRODUCT_NO_MOVEMENTS_ID="$(printf '%s' "$PRODUCT_NO_MOVEMENTS_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+
+STOCK_AUDIT_NO_MOVEMENTS_RESPONSE="$(json_request GET "/api/v1/stock-audit/products/${PRODUCT_NO_MOVEMENTS_ID}" "200" "" )"
+
+STOCK_AUDIT_NO_MOVEMENTS_RESPONSE="$STOCK_AUDIT_NO_MOVEMENTS_RESPONSE" PRODUCT_NO_MOVEMENTS_ID="$PRODUCT_NO_MOVEMENTS_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+from decimal import Decimal
+
+payload = json.loads(os.environ["STOCK_AUDIT_NO_MOVEMENTS_RESPONSE"])
+audit = payload["data"]
+product_id = os.environ["PRODUCT_NO_MOVEMENTS_ID"]
+
+assert audit["productId"] == product_id, "productId da auditoria sem movimento não bate"
+assert audit["product"]["id"] == product_id, "product.id da auditoria sem movimento não bate"
+assert audit["isConsistent"] is True, "Produto sem movimento deveria estar consistente"
+assert audit["isCurrentStockConsistent"] is True, "currentStock sem movimento deveria estar consistente"
+assert audit["isMovementChainConsistent"] is True, "Cadeia sem movimento deveria estar consistente"
+assert audit["totalMovements"] == 0, f"Produto sem movimento deveria ter 0 movimentos, veio {audit['totalMovements']}"
+assert audit["latestMovement"] is None, "Produto sem movimento não deveria ter latestMovement"
+assert audit["brokenTransitions"] == [], "Produto sem movimento não deveria ter brokenTransitions"
+assert audit["movements"] == [], "Produto sem movimento não deveria retornar movements"
+
+current_stock = Decimal(str(audit["currentStock"]))
+calculated_stock = Decimal(str(audit["calculatedStock"]))
+assert current_stock == Decimal("5"), f"currentStock sem movimento deveria ser 5, veio {current_stock}"
+assert calculated_stock == Decimal("5"), f"calculatedStock sem movimento deveria ser 5, veio {calculated_stock}"
+PYVALIDATION
 
 CUSTOMER_PAYLOAD="$(cat <<JSON
 {
@@ -901,6 +954,11 @@ after_cancel_stock = Decimal(str(after_cancel_product["currentStock"]))
 assert after_cancel_stock == before_stock, (
     f"Estoque após cancelar compra deveria voltar para {before_stock}, veio {after_cancel_stock}"
 )
+
+after_cancel_cost_price = Decimal(str(after_cancel_product["costPrice"]))
+assert after_cancel_cost_price == Decimal("11.25"), (
+    f"costPrice após cancelar compra deveria permanecer 11.25, veio {after_cancel_cost_price}"
+)
 PYVALIDATION
 
 json_request PATCH "/api/v1/purchases/${PURCHASE_ID}/cancel" "400" "$CANCEL_PURCHASE_PAYLOAD" >/dev/null
@@ -938,6 +996,49 @@ assert latest["purchaseId"] is not None, "latestMovement deveria estar vinculado
 assert latest["saleId"] is None, "latestMovement de compra não deveria ter saleId"
 assert latest["type"] == "OUT", f"latestMovement deveria ser OUT após cancelamento da compra, veio {latest['type']}"
 assert Decimal(str(latest["quantity"])) == Decimal("4"), "latestMovement deveria ter quantidade 4"
+PYVALIDATION
+
+STOCK_AUDIT_STORE_SUMMARY_RESPONSE="$(json_request GET "/api/v1/stock-audit/stores/${STORE_ID}/summary" "200" "" )"
+
+STOCK_AUDIT_STORE_SUMMARY_RESPONSE="$STOCK_AUDIT_STORE_SUMMARY_RESPONSE" STORE_ID="$STORE_ID" PRODUCT_ID="$PRODUCT_ID" PRODUCT_NO_MOVEMENTS_ID="$PRODUCT_NO_MOVEMENTS_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+from decimal import Decimal
+
+payload = json.loads(os.environ["STOCK_AUDIT_STORE_SUMMARY_RESPONSE"])
+summary = payload["data"]
+store_id = os.environ["STORE_ID"]
+product_id = os.environ["PRODUCT_ID"]
+product_no_movements_id = os.environ["PRODUCT_NO_MOVEMENTS_ID"]
+
+assert summary["storeId"] == store_id, "storeId do resumo da auditoria não bate"
+assert summary["store"]["id"] == store_id, "store.id do resumo da auditoria não bate"
+assert summary["totalProducts"] >= 2, f"Resumo deveria auditar pelo menos 2 produtos, veio {summary['totalProducts']}"
+assert summary["consistentProducts"] + summary["inconsistentProducts"] == summary["totalProducts"], (
+    "consistentProducts + inconsistentProducts deveria bater com totalProducts"
+)
+assert isinstance(summary["items"], list), "Resumo deveria retornar items como lista"
+assert isinstance(summary["inconsistentItems"], list), "Resumo deveria retornar inconsistentItems como lista"
+
+items_by_product = {item["productId"]: item for item in summary["items"]}
+assert product_id in items_by_product, "Produto principal do smoke não apareceu no resumo da auditoria"
+assert product_no_movements_id in items_by_product, "Produto sem movimentação não apareceu no resumo da auditoria"
+
+main_item = items_by_product[product_id]
+assert main_item["isConsistent"] is True, "Produto principal deveria estar consistente no resumo"
+assert main_item["totalMovements"] == 6, f"Produto principal deveria ter 6 movimentos no resumo, veio {main_item['totalMovements']}"
+assert main_item["latestMovement"] is not None, "Produto principal deveria ter latestMovement no resumo"
+assert main_item["latestMovement"]["type"] == "OUT", "latestMovement do produto principal deveria ser OUT"
+assert main_item["latestMovement"]["purchaseId"] is not None, "latestMovement do produto principal deveria ter purchaseId"
+assert main_item["latestMovement"]["saleId"] is None, "latestMovement do produto principal não deveria ter saleId"
+
+no_movement_item = items_by_product[product_no_movements_id]
+assert no_movement_item["isConsistent"] is True, "Produto sem movimento deveria estar consistente no resumo"
+assert no_movement_item["totalMovements"] == 0, f"Produto sem movimento deveria ter 0 movimentos no resumo, veio {no_movement_item['totalMovements']}"
+assert no_movement_item["latestMovement"] is None, "Produto sem movimento não deveria ter latestMovement no resumo"
+assert no_movement_item["brokenTransitions"] == [], "Produto sem movimento não deveria ter brokenTransitions no resumo"
+assert Decimal(str(no_movement_item["currentStock"])) == Decimal("5"), "currentStock do produto sem movimento deveria ser 5 no resumo"
+assert Decimal(str(no_movement_item["calculatedStock"])) == Decimal("5"), "calculatedStock do produto sem movimento deveria ser 5 no resumo"
 PYVALIDATION
 
 json_request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null

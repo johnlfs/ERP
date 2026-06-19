@@ -19,8 +19,28 @@ const stockAuditMovementSelect = {
   createdAt: true
 } satisfies Prisma.StockMovementSelect;
 
+const stockAuditProductSelect = {
+  id: true,
+  storeId: true,
+  internalCode: true,
+  barcode: true,
+  name: true,
+  currentStock: true,
+  store: {
+    select: {
+      id: true,
+      name: true,
+      tradeName: true
+    }
+  }
+} satisfies Prisma.ProductSelect;
+
 type StockAuditMovement = Prisma.StockMovementGetPayload<{
   select: typeof stockAuditMovementSelect;
+}>;
+
+type StockAuditProduct = Prisma.ProductGetPayload<{
+  select: typeof stockAuditProductSelect;
 }>;
 
 @Injectable()
@@ -63,44 +83,10 @@ export class StockAuditService {
     };
   }
 
-  async auditProduct(productId: string, user: AuthenticatedUser) {
-    const product = await this.database.product.findUnique({
-      where: {
-        id: productId
-      },
-      select: {
-        id: true,
-        storeId: true,
-        internalCode: true,
-        barcode: true,
-        name: true,
-        currentStock: true,
-        store: {
-          select: {
-            id: true,
-            name: true,
-            tradeName: true
-          }
-        }
-      }
-    });
-
-    if (!product) {
-      throw new NotFoundException('Produto não encontrado');
-    }
-
-    this.ensureUserCanReadStore(user, product.storeId);
-
-    const movements = await this.database.stockMovement.findMany({
-      where: {
-        productId: product.id
-      },
-      orderBy: {
-        createdAt: 'asc'
-      },
-      select: stockAuditMovementSelect
-    });
-
+  private buildProductAudit(
+    product: StockAuditProduct,
+    movements: StockAuditMovement[]
+  ) {
     const currentStock = new Prisma.Decimal(product.currentStock);
     const latestMovement = movements.at(-1) ?? null;
     const calculatedStock = latestMovement
@@ -154,6 +140,122 @@ export class StockAuditService {
       latestMovement: latestMovement ? this.formatMovement(latestMovement) : null,
       brokenTransitions,
       movements: movements.map((movement) => this.formatMovement(movement))
+    };
+  }
+
+  async auditProduct(productId: string, user: AuthenticatedUser) {
+    const product = await this.database.product.findUnique({
+      where: {
+        id: productId
+      },
+      select: stockAuditProductSelect
+    });
+
+    if (!product) {
+      throw new NotFoundException('Produto não encontrado');
+    }
+
+    this.ensureUserCanReadStore(user, product.storeId);
+
+    const movements = await this.database.stockMovement.findMany({
+      where: {
+        productId: product.id
+      },
+      orderBy: {
+        createdAt: 'asc'
+      },
+      select: stockAuditMovementSelect
+    });
+
+    return this.buildProductAudit(product, movements);
+  }
+
+  async auditStoreSummary(storeId: string, user: AuthenticatedUser) {
+    const store = await this.database.store.findUnique({
+      where: {
+        id: storeId
+      },
+      select: {
+        id: true,
+        name: true,
+        tradeName: true
+      }
+    });
+
+    if (!store) {
+      throw new NotFoundException('Loja não encontrada');
+    }
+
+    this.ensureUserCanReadStore(user, store.id);
+
+    const products = await this.database.product.findMany({
+      where: {
+        storeId: store.id
+      },
+      orderBy: {
+        name: 'asc'
+      },
+      select: stockAuditProductSelect
+    });
+
+    const productIds = products.map((product) => product.id);
+
+    const movements = productIds.length
+      ? await this.database.stockMovement.findMany({
+          where: {
+            storeId: store.id,
+            productId: {
+              in: productIds
+            }
+          },
+          orderBy: [
+            {
+              productId: 'asc'
+            },
+            {
+              createdAt: 'asc'
+            }
+          ],
+          select: stockAuditMovementSelect
+        })
+      : [];
+
+    const movementsByProductId = new Map<string, StockAuditMovement[]>();
+
+    for (const movement of movements) {
+      const productMovements = movementsByProductId.get(movement.productId) ?? [];
+      productMovements.push(movement);
+      movementsByProductId.set(movement.productId, productMovements);
+    }
+
+    const productAudits = products.map((product) =>
+      this.buildProductAudit(product, movementsByProductId.get(product.id) ?? [])
+    );
+
+    const items = productAudits.map((audit) => ({
+      productId: audit.productId,
+      storeId: audit.storeId,
+      product: audit.product,
+      currentStock: audit.currentStock,
+      calculatedStock: audit.calculatedStock,
+      isConsistent: audit.isConsistent,
+      isCurrentStockConsistent: audit.isCurrentStockConsistent,
+      isMovementChainConsistent: audit.isMovementChainConsistent,
+      totalMovements: audit.totalMovements,
+      latestMovement: audit.latestMovement,
+      brokenTransitions: audit.brokenTransitions
+    }));
+    const inconsistentItems = items.filter((item) => !item.isConsistent);
+
+    return {
+      storeId: store.id,
+      store,
+      totalProducts: items.length,
+      consistentProducts: items.length - inconsistentItems.length,
+      inconsistentProducts: inconsistentItems.length,
+      isConsistent: inconsistentItems.length === 0,
+      inconsistentItems,
+      items
     };
   }
 }
