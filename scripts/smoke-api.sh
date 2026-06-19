@@ -225,6 +225,7 @@ json_request POST "/api/v1/purchases" "401" "$UNAUTHORIZED_PURCHASE_PAYLOAD" >/d
 
 request PATCH "/api/v1/sales/00000000-0000-0000-0000-000000000001/cancel" "401"
 request PATCH "/api/v1/purchases/00000000-0000-0000-0000-000000000001/cancel" "401"
+request PATCH "/api/v1/accounts-payable/00000000-0000-0000-0000-000000000001/pay" "401"
 request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000000001" "401"
 request GET "/api/v1/stock-audit/stores/${STORE_ID}/summary" "401"
 
@@ -247,6 +248,24 @@ json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&status=INVALID" "4
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&storeId=abc" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&dueDateFrom=2030-02-01T00:00:00.000Z&dueDateTo=2030-01-01T00:00:00.000Z" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-payable/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
+
+PAY_ACCOUNT_PAYABLE_NOT_FOUND_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "PIX"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-payable/00000000-0000-0000-0000-000000009999/pay" "404" "$PAY_ACCOUNT_PAYABLE_NOT_FOUND_PAYLOAD" >/dev/null
+
+PAY_ACCOUNT_PAYABLE_INVALID_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": ""
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-payable/00000000-0000-0000-0000-000000009999/pay" "400" "$PAY_ACCOUNT_PAYABLE_INVALID_PAYLOAD" >/dev/null
 
 SMOKE_SUFFIX="$(date +%s)"
 
@@ -1060,6 +1079,17 @@ for movement in data:
     assert movement["saleId"] is None, "Movimento filtrado por purchaseId não deveria ter saleId"
 PYVALIDATION
 
+PAY_CANCELED_ACCOUNT_PAYABLE_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "PIX",
+  "paidAt": "2030-02-01T12:00:00.000Z",
+  "paymentNotes": "Tentativa de baixa de conta cancelada pelo smoke test"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-payable/${ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_CANCELED_ACCOUNT_PAYABLE_PAYLOAD" >/dev/null
+
 PRODUCT_AFTER_PURCHASE_CANCEL_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
 
 PRODUCT_BEFORE_PURCHASE_RESPONSE="$PRODUCT_BEFORE_PURCHASE_RESPONSE" PRODUCT_AFTER_PURCHASE_CANCEL_RESPONSE="$PRODUCT_AFTER_PURCHASE_CANCEL_RESPONSE" python3 - <<'PYVALIDATION'
@@ -1162,6 +1192,122 @@ assert no_movement_item["brokenTransitions"] == [], "Produto sem movimento não 
 assert Decimal(str(no_movement_item["currentStock"])) == Decimal("5"), "currentStock do produto sem movimento deveria ser 5 no resumo"
 assert Decimal(str(no_movement_item["calculatedStock"])) == Decimal("5"), "calculatedStock do produto sem movimento deveria ser 5 no resumo"
 PYVALIDATION
+
+PAID_PURCHASE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "supplierId": "${SUPPLIER_ID}",
+  "document": "SMOKE-PURCHASE-PAID-${SMOKE_SUFFIX}",
+  "notes": "Compra para baixa de conta a pagar pelo smoke test",
+  "dueDate": "2030-03-01T00:00:00.000Z",
+  "items": [
+    {
+      "productId": "${PRODUCT_ID}",
+      "quantity": 1,
+      "unitCost": 12.5,
+      "discount": 0
+    }
+  ],
+  "discount": 0
+}
+JSON
+)"
+
+PAID_PURCHASE_RESPONSE="$(json_request POST "/api/v1/purchases" "201" "$PAID_PURCHASE_PAYLOAD")"
+PAID_PURCHASE_ID="$(printf '%s' "$PAID_PURCHASE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+PAID_ACCOUNT_PAYABLE_ID="$(printf '%s' "$PAID_PURCHASE_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["accountPayable"]["id"])')"
+
+PAY_ACCOUNT_PAYABLE_PARTIAL_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "PIX",
+  "paidAmount": 1,
+  "paidAt": "2030-03-02T12:00:00.000Z",
+  "paymentNotes": "Tentativa de baixa parcial pelo smoke test"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_PARTIAL_PAYLOAD" >/dev/null
+
+PAY_ACCOUNT_PAYABLE_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "PIX",
+  "paidAt": "2030-03-02T12:00:00.000Z",
+  "paymentNotes": "Baixa realizada pelo smoke test"
+}
+JSON
+)"
+
+PAID_ACCOUNT_PAYABLE_RESPONSE="$(json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "200" "$PAY_ACCOUNT_PAYABLE_PAYLOAD")"
+PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE="$(json_request GET "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}" "200" "" )"
+PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE="$(json_request GET "/api/v1/accounts-payable?status=PAID&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE="$(json_request GET "/api/v1/accounts-payable?status=OPEN&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE="$(json_request GET "/api/v1/accounts-payable?search=PIX&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+PAID_PURCHASE_AFTER_PAY_RESPONSE="$(json_request GET "/api/v1/purchases/${PAID_PURCHASE_ID}" "200" "" )"
+
+PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" PAID_ACCOUNT_PAYABLE_RESPONSE="$PAID_ACCOUNT_PAYABLE_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE" PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE="$PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE" PAID_PURCHASE_AFTER_PAY_RESPONSE="$PAID_PURCHASE_AFTER_PAY_RESPONSE" PAID_PURCHASE_ID="$PAID_PURCHASE_ID" PAID_ACCOUNT_PAYABLE_ID="$PAID_ACCOUNT_PAYABLE_ID" SUPPLIER_ID="$SUPPLIER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+from decimal import Decimal
+
+paid_purchase = json.loads(os.environ["PAID_PURCHASE_RESPONSE"])["data"]
+paid_response = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_RESPONSE"])["data"]
+paid_by_id = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE"])["data"]
+paid_by_status = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE"])["data"]
+open_after_pay = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE"])["data"]
+method_search = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE"])["data"]
+paid_purchase_after_pay = json.loads(os.environ["PAID_PURCHASE_AFTER_PAY_RESPONSE"])["data"]
+
+paid_purchase_id = os.environ["PAID_PURCHASE_ID"]
+paid_account_payable_id = os.environ["PAID_ACCOUNT_PAYABLE_ID"]
+supplier_id = os.environ["SUPPLIER_ID"]
+store_id = os.environ["STORE_ID"]
+
+purchase_payable = paid_purchase["accountPayable"]
+assert purchase_payable["id"] == paid_account_payable_id, "Compra paga deveria retornar accountPayable correto"
+assert purchase_payable["status"] == "OPEN", "Conta da compra para pagamento deveria iniciar OPEN"
+
+for payable in [paid_response, paid_by_id]:
+    assert payable["id"] == paid_account_payable_id, "Conta paga retornou id incorreto"
+    assert payable["purchaseId"] == paid_purchase_id, "Conta paga retornou purchaseId incorreto"
+    assert payable["supplierId"] == supplier_id, "Conta paga retornou supplierId incorreto"
+    assert payable["storeId"] == store_id, "Conta paga retornou storeId incorreto"
+    assert payable["status"] == "PAID", f"Conta deveria estar PAID, veio {payable['status']}"
+    assert payable["paidAt"] is not None, "Conta paga deveria ter paidAt"
+    assert payable["paidAt"].startswith("2030-03-02"), "paidAt deveria respeitar a data enviada"
+    assert payable["paidByUserId"] is not None, "Conta paga deveria ter paidByUserId"
+    assert payable["paidBy"] is not None, "Conta paga deveria retornar paidBy"
+    assert payable["paidBy"]["id"] == payable["paidByUserId"], "paidBy.id deveria bater com paidByUserId"
+    assert payable["paymentMethod"] == "PIX", "paymentMethod deveria ser PIX"
+    assert payable["paymentNotes"] == "Baixa realizada pelo smoke test", "paymentNotes não bate"
+    assert payable["paidAmount"] == payable["amount"], "paidAmount deveria ser igual ao amount"
+    assert Decimal(str(payable["paidAmount"])) == Decimal(str(paid_purchase["total"])), (
+        "paidAmount deveria ser igual ao total da compra"
+    )
+
+assert len(paid_by_status) == 1, f"Filtro status=PAID deveria retornar 1 registro, veio {len(paid_by_status)}"
+assert paid_by_status[0]["id"] == paid_account_payable_id, "Filtro status=PAID retornou conta incorreta"
+assert paid_by_status[0]["status"] == "PAID", "Filtro status=PAID retornou status incorreto"
+
+assert len(open_after_pay) == 0, f"Filtro status=OPEN após baixa deveria retornar 0, veio {len(open_after_pay)}"
+
+assert any(account["id"] == paid_account_payable_id for account in method_search), (
+    "Busca por paymentMethod deveria encontrar a conta paga"
+)
+
+paid_purchase_payable = paid_purchase_after_pay["accountPayable"]
+assert paid_purchase_after_pay["id"] == paid_purchase_id, "Busca da compra paga retornou id incorreto"
+assert paid_purchase_payable["id"] == paid_account_payable_id, "Compra paga deveria retornar conta correta"
+assert paid_purchase_payable["status"] == "PAID", "Compra paga deveria retornar accountPayable PAID"
+assert paid_purchase_payable["paidAt"] is not None, "Compra paga deveria retornar paidAt na conta"
+assert paid_purchase_payable["paidByUserId"] is not None, "Compra paga deveria retornar paidByUserId na conta"
+assert paid_purchase_payable["paidAmount"] == paid_purchase_payable["amount"], (
+    "Compra paga deveria retornar paidAmount igual ao amount da conta"
+)
+PYVALIDATION
+
+json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/purchases/${PAID_PURCHASE_ID}/cancel" "400" "$CANCEL_PURCHASE_PAYLOAD" >/dev/null
 
 json_request GET "/api/v1/stock-audit/products/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
 

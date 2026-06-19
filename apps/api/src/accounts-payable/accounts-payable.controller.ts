@@ -1,4 +1,13 @@
-import { Controller, Get, Inject, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Query,
+  UseGuards
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
@@ -14,6 +23,7 @@ import {
 import { validateUuidParam } from '../common/validation';
 import { AccountsPayableService } from './accounts-payable.service';
 import { ListAccountsPayableQueryDto } from './dto/list-accounts-payable-query.dto';
+import { PayAccountPayableDto } from './dto/pay-account-payable.dto';
 
 @ApiTags('accounts-payable')
 @ApiBearerAuth()
@@ -68,6 +78,22 @@ export class AccountsPayableController {
   ) {
     const accountPayable = await this.accountsPayableService.findById(
       validateUuidParam(id, 'id'),
+      user
+    );
+
+    return apiResponse(accountPayable);
+  }
+
+  @Patch(':id/pay')
+  @ApiOperation({ summary: 'Realiza baixa total de uma conta a pagar' })
+  async pay(
+    @Param('id') id: string,
+    @Body() body: PayAccountPayableDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const accountPayable = await this.accountsPayableService.pay(
+      validateUuidParam(id, 'id'),
+      body,
       user
     );
 

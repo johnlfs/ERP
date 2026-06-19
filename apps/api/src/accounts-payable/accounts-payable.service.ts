@@ -7,8 +7,10 @@ import {
 } from '@nestjs/common';
 import { AccountPayableStatus, Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { ensureUserCanWriteStore } from '../auth/store-access';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
+import { PayAccountPayableDto } from './dto/pay-account-payable.dto';
 
 const accountPayableInclude = {
   store: {
@@ -36,6 +38,13 @@ const accountPayableInclude = {
       status: true,
       total: true,
       createdAt: true
+    }
+  },
+  paidBy: {
+    select: {
+      id: true,
+      name: true,
+      email: true
     }
   },
   canceledBy: {
@@ -89,7 +98,6 @@ export class AccountsPayableService {
     }
   }
 
-
   private ensureValidDueDateRange(dueDateFrom?: string, dueDateTo?: string) {
     if (!dueDateFrom || !dueDateTo) {
       return;
@@ -106,6 +114,40 @@ export class AccountsPayableService {
     }
   }
 
+  private ensureAccountCanBePaid(accountPayable: { status: AccountPayableStatus }) {
+    if (accountPayable.status === AccountPayableStatus.PAID) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_PAYABLE_ALREADY_PAID',
+        message: 'Conta a pagar já foi quitada'
+      });
+    }
+
+    if (accountPayable.status === AccountPayableStatus.CANCELED) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_PAYABLE_CANCELED',
+        message: 'Conta a pagar cancelada não pode ser quitada'
+      });
+    }
+  }
+
+  private resolvePaidAmount(
+    accountAmount: Prisma.Decimal,
+    paidAmount?: number
+  ) {
+    const resolvedPaidAmount = paidAmount === undefined
+      ? new Prisma.Decimal(accountAmount)
+      : new Prisma.Decimal(paidAmount);
+
+    if (!resolvedPaidAmount.equals(accountAmount)) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_PAYABLE_PARTIAL_PAYMENT_NOT_SUPPORTED',
+        message: 'Nesta fase, apenas baixa total da conta a pagar é permitida'
+      });
+    }
+
+    return resolvedPaidAmount;
+  }
+
   private formatAccountPayable(accountPayable: AccountPayableWithRelations) {
     return {
       id: accountPayable.id,
@@ -118,6 +160,12 @@ export class AccountsPayableService {
       amount: this.decimalToNumber(accountPayable.amount),
       dueDate: accountPayable.dueDate,
       paidAt: accountPayable.paidAt,
+      paidByUserId: accountPayable.paidByUserId,
+      paidAmount: accountPayable.paidAmount === null
+        ? null
+        : this.decimalToNumber(accountPayable.paidAmount),
+      paymentMethod: accountPayable.paymentMethod,
+      paymentNotes: accountPayable.paymentNotes,
       canceledAt: accountPayable.canceledAt,
       canceledByUserId: accountPayable.canceledByUserId,
       cancellationReason: accountPayable.cancellationReason,
@@ -130,6 +178,7 @@ export class AccountsPayableService {
             total: this.decimalToNumber(accountPayable.purchase.total)
           }
         : null,
+      paidBy: accountPayable.paidBy,
       canceledBy: accountPayable.canceledBy,
       createdAt: accountPayable.createdAt,
       updatedAt: accountPayable.updatedAt
@@ -193,6 +242,18 @@ export class AccountsPayableService {
                 }
               },
               {
+                paymentMethod: {
+                  contains: search,
+                  mode: 'insensitive'
+                }
+              },
+              {
+                paymentNotes: {
+                  contains: search,
+                  mode: 'insensitive'
+                }
+              },
+              {
                 supplier: {
                   is: {
                     name: {
@@ -250,5 +311,62 @@ export class AccountsPayableService {
     this.ensureUserCanReadStore(user, accountPayable.storeId);
 
     return this.formatAccountPayable(accountPayable);
+  }
+
+  async pay(id: string, input: PayAccountPayableDto, user: AuthenticatedUser) {
+    return this.database.$transaction(async (tx) => {
+      const accountPayable = await tx.accountPayable.findUnique({
+        where: {
+          id
+        },
+        select: {
+          id: true,
+          storeId: true,
+          status: true,
+          amount: true
+        }
+      });
+
+      if (!accountPayable) {
+        throw new NotFoundException('Conta a pagar não encontrada');
+      }
+
+      ensureUserCanWriteStore(user, accountPayable.storeId);
+      this.ensureAccountCanBePaid(accountPayable);
+
+      const paidAmount = this.resolvePaidAmount(
+        accountPayable.amount,
+        input.paidAmount
+      );
+
+      const paidAt = input.paidAt ? new Date(input.paidAt) : new Date();
+
+      await tx.accountPayable.update({
+        where: {
+          id: accountPayable.id
+        },
+        data: {
+          status: AccountPayableStatus.PAID,
+          paidAt,
+          paidByUserId: user.id,
+          paidAmount,
+          paymentMethod: input.paymentMethod,
+          paymentNotes: input.paymentNotes
+        }
+      });
+
+      const paidAccountPayable = await tx.accountPayable.findUnique({
+        where: {
+          id: accountPayable.id
+        },
+        include: accountPayableInclude
+      });
+
+      if (!paidAccountPayable) {
+        throw new NotFoundException('Conta a pagar não encontrada após baixa');
+      }
+
+      return this.formatAccountPayable(paidAccountPayable);
+    });
   }
 }

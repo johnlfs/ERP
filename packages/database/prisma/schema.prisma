@@ -70,6 +70,7 @@ model User {
   purchases         Purchase[]      @relation("PurchaseCreatedBy")
   canceledPurchases Purchase[]      @relation("PurchaseCanceledBy")
 
+  paidAccountsPayable     AccountPayable[] @relation("AccountPayablePaidBy")
   canceledAccountsPayable AccountPayable[] @relation("AccountPayableCanceledBy")
 
   @@map("users")
@@ -362,6 +363,10 @@ model AccountPayable {
   amount             Decimal              @db.Decimal(12, 2)
   dueDate            DateTime
   paidAt             DateTime?
+  paidByUserId       String?
+  paidAmount         Decimal?             @db.Decimal(12, 2)
+  paymentMethod      String?
+  paymentNotes       String?
   canceledAt         DateTime?
   canceledByUserId   String?
   cancellationReason String?
@@ -370,6 +375,7 @@ model AccountPayable {
   store      Store     @relation(fields: [storeId], references: [id])
   supplier   Supplier? @relation(fields: [supplierId], references: [id])
   purchase   Purchase? @relation(fields: [purchaseId], references: [id])
+  paidBy     User?     @relation("AccountPayablePaidBy", fields: [paidByUserId], references: [id])
   canceledBy User?     @relation("AccountPayableCanceledBy", fields: [canceledByUserId], references: [id])
 
   createdAt DateTime @default(now())
@@ -379,6 +385,7 @@ model AccountPayable {
   @@index([storeId, status])
   @@index([supplierId, dueDate])
   @@index([purchaseId])
+  @@index([paidByUserId])
   @@index([canceledByUserId])
   @@map("accounts_payable")
 }

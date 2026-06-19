@@ -61,6 +61,10 @@ const purchaseInclude = {
       amount: true,
       dueDate: true,
       paidAt: true,
+      paidByUserId: true,
+      paidAmount: true,
+      paymentMethod: true,
+      paymentNotes: true,
       canceledAt: true,
       canceledByUserId: true,
       cancellationReason: true,
@@ -164,7 +168,10 @@ export class PurchasesService {
       accountPayable: purchase.accountPayable
         ? {
             ...purchase.accountPayable,
-            amount: this.decimalToNumber(purchase.accountPayable.amount)
+            amount: this.decimalToNumber(purchase.accountPayable.amount),
+            paidAmount: purchase.accountPayable.paidAmount === null
+              ? null
+              : this.decimalToNumber(purchase.accountPayable.paidAmount)
           }
         : null,
       items: purchase.items.map((item) => ({
