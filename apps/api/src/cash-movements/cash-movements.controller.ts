@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Inject,
   Param,
+  Post,
   Query,
   UseGuards
 } from '@nestjs/common';
@@ -20,6 +22,7 @@ import {
 } from '../common/pagination';
 import { validateUuidParam } from '../common/validation';
 import { CashMovementsService } from './cash-movements.service';
+import { CreateManualCashMovementDto } from './dto/create-manual-cash-movement.dto';
 import { ListCashMovementsQueryDto } from './dto/list-cash-movements-query.dto';
 
 @ApiTags('cash-movements')
@@ -32,6 +35,21 @@ export class CashMovementsController {
     @Inject(CashMovementsService)
     private readonly cashMovementsService: CashMovementsService
   ) {}
+
+
+  @Post('manual')
+  @ApiOperation({ summary: 'Cria uma movimentação manual de caixa' })
+  async createManual(
+    @Body() body: CreateManualCashMovementDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    const cashMovement = await this.cashMovementsService.createManual(
+      body,
+      user
+    );
+
+    return apiResponse(cashMovement);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Lista movimentações de caixa' })

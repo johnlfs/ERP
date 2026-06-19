@@ -120,6 +120,18 @@ request GET "/api/v1/accounts-payable?page=1&pageSize=10" "401"
 request GET "/api/v1/accounts-receivable?page=1&pageSize=10" "401"
 request GET "/api/v1/cash-movements?page=1&pageSize=10" "401"
 
+UNAUTHORIZED_MANUAL_CASH_MOVEMENT_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "type": "INFLOW",
+  "amount": 1,
+  "description": "Smoke manual sem token"
+}
+JSON
+)"
+
+json_request POST "/api/v1/cash-movements/manual" "401" "$UNAUTHORIZED_MANUAL_CASH_MOVEMENT_PAYLOAD" >/dev/null
+
 UNAUTHORIZED_CATEGORY_PAYLOAD="$(cat <<JSON
 {
   "storeId": "${STORE_ID}",
@@ -259,6 +271,74 @@ json_request GET "/api/v1/cash-movements?page=1&pageSize=10&accountReceivableId=
 json_request GET "/api/v1/cash-movements?page=1&pageSize=10&occurredAtFrom=not-a-date" "400" "" >/dev/null
 json_request GET "/api/v1/cash-movements?page=1&pageSize=10&occurredAtFrom=2030-06-02T00:00:00.000Z&occurredAtTo=2030-06-01T00:00:00.000Z" "400" "" >/dev/null
 json_request GET "/api/v1/cash-movements/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
+
+MANUAL_CASH_MOVEMENT_INVALID_STORE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "abc",
+  "type": "INFLOW",
+  "amount": 10,
+  "description": "Smoke manual inválido"
+}
+JSON
+)"
+
+MANUAL_CASH_MOVEMENT_INVALID_TYPE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "type": "INVALID",
+  "amount": 10,
+  "description": "Smoke manual inválido"
+}
+JSON
+)"
+
+MANUAL_CASH_MOVEMENT_ZERO_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "type": "INFLOW",
+  "amount": 0,
+  "description": "Smoke manual zerado"
+}
+JSON
+)"
+
+MANUAL_CASH_MOVEMENT_NEGATIVE_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "type": "OUTFLOW",
+  "amount": -1,
+  "description": "Smoke manual negativo"
+}
+JSON
+)"
+
+MANUAL_CASH_MOVEMENT_EMPTY_DESCRIPTION_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "type": "INFLOW",
+  "amount": 10,
+  "description": ""
+}
+JSON
+)"
+
+MANUAL_CASH_MOVEMENT_LINKED_ACCOUNT_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "type": "INFLOW",
+  "amount": 10,
+  "description": "Smoke manual vinculado indevido",
+  "accountPayableId": "00000000-0000-0000-0000-000000000001"
+}
+JSON
+)"
+
+json_request POST "/api/v1/cash-movements/manual" "400" "$MANUAL_CASH_MOVEMENT_INVALID_STORE_PAYLOAD" >/dev/null
+json_request POST "/api/v1/cash-movements/manual" "400" "$MANUAL_CASH_MOVEMENT_INVALID_TYPE_PAYLOAD" >/dev/null
+json_request POST "/api/v1/cash-movements/manual" "400" "$MANUAL_CASH_MOVEMENT_ZERO_PAYLOAD" >/dev/null
+json_request POST "/api/v1/cash-movements/manual" "400" "$MANUAL_CASH_MOVEMENT_NEGATIVE_PAYLOAD" >/dev/null
+json_request POST "/api/v1/cash-movements/manual" "400" "$MANUAL_CASH_MOVEMENT_EMPTY_DESCRIPTION_PAYLOAD" >/dev/null
+json_request POST "/api/v1/cash-movements/manual" "400" "$MANUAL_CASH_MOVEMENT_LINKED_ACCOUNT_PAYLOAD" >/dev/null
 
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&status=INVALID" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&storeId=abc" "400" "" >/dev/null
@@ -1866,6 +1946,95 @@ assert len(movements) == 1, f"Segundo recebimento não deveria criar novo cash m
 assert movements[0]["id"] == os.environ["RECEIVED_CASH_MOVEMENT_ID"], "Cash movement após segundo recebimento deveria permanecer o mesmo"
 PYVALIDATION
 json_request PATCH "/api/v1/sales/${RECEIVED_SALE_ID}/cancel" "400" "$CANCEL_SALE_PAYLOAD" >/dev/null
+
+
+MANUAL_CASH_INFLOW_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "type": "INFLOW",
+  "amount": 50.25,
+  "occurredAt": "2030-06-10T10:00:00.000Z",
+  "description": "Smoke entrada manual de caixa",
+  "document": "SMOKE-CASH-MANUAL-IN",
+  "notes": "Entrada manual pelo smoke test"
+}
+JSON
+)"
+
+MANUAL_CASH_OUTFLOW_PAYLOAD="$(cat <<JSON
+{
+  "storeId": "${STORE_ID}",
+  "type": "OUTFLOW",
+  "amount": 20.10,
+  "occurredAt": "2030-06-10T11:00:00.000Z",
+  "description": "Smoke saída manual de caixa",
+  "document": "SMOKE-CASH-MANUAL-OUT",
+  "notes": "Saída manual pelo smoke test"
+}
+JSON
+)"
+
+MANUAL_CASH_INFLOW_RESPONSE="$(json_request POST "/api/v1/cash-movements/manual" "201" "$MANUAL_CASH_INFLOW_PAYLOAD")"
+MANUAL_CASH_OUTFLOW_RESPONSE="$(json_request POST "/api/v1/cash-movements/manual" "201" "$MANUAL_CASH_OUTFLOW_PAYLOAD")"
+MANUAL_CASH_INFLOW_ID="$(printf '%s' "$MANUAL_CASH_INFLOW_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+MANUAL_CASH_OUTFLOW_ID="$(printf '%s' "$MANUAL_CASH_OUTFLOW_RESPONSE" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["id"])')"
+MANUAL_CASH_INFLOW_BY_ID_RESPONSE="$(json_request GET "/api/v1/cash-movements/${MANUAL_CASH_INFLOW_ID}" "200" "" )"
+MANUAL_CASH_OUTFLOW_BY_ID_RESPONSE="$(json_request GET "/api/v1/cash-movements/${MANUAL_CASH_OUTFLOW_ID}" "200" "" )"
+MANUAL_CASH_BY_SOURCE_RESPONSE="$(json_request GET "/api/v1/cash-movements?source=MANUAL&search=SMOKE-CASH-MANUAL&page=1&pageSize=10" "200" "" )"
+MANUAL_CASH_INFLOW_FILTER_RESPONSE="$(json_request GET "/api/v1/cash-movements?type=INFLOW&source=MANUAL&search=SMOKE-CASH-MANUAL-IN&page=1&pageSize=10" "200" "" )"
+MANUAL_CASH_OUTFLOW_FILTER_RESPONSE="$(json_request GET "/api/v1/cash-movements?type=OUTFLOW&source=MANUAL&search=SMOKE-CASH-MANUAL-OUT&page=1&pageSize=10" "200" "" )"
+MANUAL_CASH_BY_OCCURRED_AT_RESPONSE="$(json_request GET "/api/v1/cash-movements?source=MANUAL&occurredAtFrom=2030-06-10T00:00:00.000Z&occurredAtTo=2030-06-11T00:00:00.000Z&search=SMOKE-CASH-MANUAL&page=1&pageSize=10" "200" "" )"
+MANUAL_CASH_OUTSIDE_OCCURRED_AT_RESPONSE="$(json_request GET "/api/v1/cash-movements?source=MANUAL&occurredAtFrom=2030-06-11T00:00:00.000Z&occurredAtTo=2030-06-12T00:00:00.000Z&search=SMOKE-CASH-MANUAL&page=1&pageSize=10" "200" "" )"
+CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE="$(json_request GET "/api/v1/cash-movements/stores/${STORE_ID}/summary" "200" "" )"
+
+MANUAL_CASH_INFLOW_RESPONSE="$MANUAL_CASH_INFLOW_RESPONSE" MANUAL_CASH_OUTFLOW_RESPONSE="$MANUAL_CASH_OUTFLOW_RESPONSE" MANUAL_CASH_INFLOW_BY_ID_RESPONSE="$MANUAL_CASH_INFLOW_BY_ID_RESPONSE" MANUAL_CASH_OUTFLOW_BY_ID_RESPONSE="$MANUAL_CASH_OUTFLOW_BY_ID_RESPONSE" MANUAL_CASH_BY_SOURCE_RESPONSE="$MANUAL_CASH_BY_SOURCE_RESPONSE" MANUAL_CASH_INFLOW_FILTER_RESPONSE="$MANUAL_CASH_INFLOW_FILTER_RESPONSE" MANUAL_CASH_OUTFLOW_FILTER_RESPONSE="$MANUAL_CASH_OUTFLOW_FILTER_RESPONSE" MANUAL_CASH_BY_OCCURRED_AT_RESPONSE="$MANUAL_CASH_BY_OCCURRED_AT_RESPONSE" MANUAL_CASH_OUTSIDE_OCCURRED_AT_RESPONSE="$MANUAL_CASH_OUTSIDE_OCCURRED_AT_RESPONSE" CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE="$CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+from decimal import Decimal
+
+inflow = json.loads(os.environ["MANUAL_CASH_INFLOW_RESPONSE"])["data"]
+outflow = json.loads(os.environ["MANUAL_CASH_OUTFLOW_RESPONSE"])["data"]
+inflow_by_id = json.loads(os.environ["MANUAL_CASH_INFLOW_BY_ID_RESPONSE"])["data"]
+outflow_by_id = json.loads(os.environ["MANUAL_CASH_OUTFLOW_BY_ID_RESPONSE"])["data"]
+by_source = json.loads(os.environ["MANUAL_CASH_BY_SOURCE_RESPONSE"])["data"]
+inflow_filter = json.loads(os.environ["MANUAL_CASH_INFLOW_FILTER_RESPONSE"])["data"]
+outflow_filter = json.loads(os.environ["MANUAL_CASH_OUTFLOW_FILTER_RESPONSE"])["data"]
+by_occurred_at = json.loads(os.environ["MANUAL_CASH_BY_OCCURRED_AT_RESPONSE"])["data"]
+outside_occurred_at = json.loads(os.environ["MANUAL_CASH_OUTSIDE_OCCURRED_AT_RESPONSE"])["data"]
+summary = json.loads(os.environ["CASH_MOVEMENTS_STORE_SUMMARY_RESPONSE"])["data"]
+store_id = os.environ["STORE_ID"]
+
+for movement, expected_type, expected_amount, expected_document in [
+    (inflow, "INFLOW", Decimal("50.25"), "SMOKE-CASH-MANUAL-IN"),
+    (outflow, "OUTFLOW", Decimal("20.10"), "SMOKE-CASH-MANUAL-OUT"),
+]:
+    assert movement["storeId"] == store_id, "Movimento manual deveria retornar storeId correto"
+    assert movement["type"] == expected_type, "Movimento manual retornou type incorreto"
+    assert movement["source"] == "MANUAL", "Movimento manual deveria ter source MANUAL"
+    assert Decimal(str(movement["amount"])) == expected_amount, "Valor do movimento manual não bate"
+    assert movement["document"] == expected_document, "Documento do movimento manual não bate"
+    assert movement["accountPayableId"] is None, "Movimento manual não deveria ter accountPayableId"
+    assert movement["accountReceivableId"] is None, "Movimento manual não deveria ter accountReceivableId"
+    assert movement["user"] is not None, "Movimento manual deveria retornar usuário"
+
+assert inflow_by_id["id"] == inflow["id"], "GET entrada manual por id retornou movimento incorreto"
+assert outflow_by_id["id"] == outflow["id"], "GET saída manual por id retornou movimento incorreto"
+
+manual_ids = {inflow["id"], outflow["id"]}
+assert {movement["id"] for movement in by_source} == manual_ids, "Filtro source=MANUAL/search deveria retornar exatamente os 2 manuais do smoke"
+assert [movement["id"] for movement in inflow_filter] == [inflow["id"]], "Filtro manual INFLOW deveria retornar somente a entrada"
+assert [movement["id"] for movement in outflow_filter] == [outflow["id"]], "Filtro manual OUTFLOW deveria retornar somente a saída"
+assert {movement["id"] for movement in by_occurred_at} == manual_ids, "Filtro occurredAt dos manuais deveria retornar os 2 movimentos"
+assert len(outside_occurred_at) == 0, "Filtro occurredAt fora dos manuais deveria retornar vazio"
+
+assert summary["storeId"] == store_id, "Resumo de caixa após manuais deveria retornar storeId correto"
+assert summary["isConsistent"] is True, "Resumo de caixa após manuais deveria estar consistente"
+assert summary["bySource"]["manual"]["count"] >= 2, "Resumo de caixa deveria contemplar movimentos manuais"
+assert Decimal(str(summary["bySource"]["manual"]["amount"])) >= Decimal("70.35"), "Resumo manual deveria contemplar entrada e saída manuais"
+assert Decimal(str(summary["inflow"]["amount"])) >= Decimal("50.25"), "Entradas deveriam contemplar entrada manual"
+assert Decimal(str(summary["outflow"]["amount"])) >= Decimal("20.10"), "Saídas deveriam contemplar saída manual"
+assert Decimal(str(summary["balance"])) == Decimal(str(summary["inflow"]["amount"])) - Decimal(str(summary["outflow"]["amount"])), "Saldo deveria continuar entrada menos saída"
+PYVALIDATION
 
 FINANCIAL_AUDIT_STORE_SUMMARY_RESPONSE="$(json_request GET "/api/v1/financial-audit/stores/${STORE_ID}/summary" "200" "" )"
 

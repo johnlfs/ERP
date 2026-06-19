@@ -9,6 +9,7 @@ import { CashMovementSource, CashMovementType, Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { ParsedPagination } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
+import { CreateManualCashMovementDto } from './dto/create-manual-cash-movement.dto';
 
 const cashMovementInclude = {
   store: {
@@ -142,6 +143,70 @@ export class CashMovementsService {
       createdAt: cashMovement.createdAt,
       updatedAt: cashMovement.updatedAt
     };
+  }
+
+
+  async createManual(
+    data: CreateManualCashMovementDto,
+    user: AuthenticatedUser
+  ) {
+    this.ensureUserCanReadStore(user, data.storeId);
+
+    const store = await this.database.store.findUnique({
+      where: {
+        id: data.storeId
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!store) {
+      throw new NotFoundException('Loja não encontrada');
+    }
+
+    if (data.accountPayableId || data.accountReceivableId) {
+      throw new BadRequestException({
+        code: 'CASH_MOVEMENT_MANUAL_LINK_NOT_ALLOWED',
+        message:
+          'Movimentação manual não pode estar vinculada a conta a pagar ou conta a receber'
+      });
+    }
+
+    const description = data.description.trim();
+
+    if (!description) {
+      throw new BadRequestException({
+        code: 'CASH_MOVEMENT_DESCRIPTION_REQUIRED',
+        message: 'description é obrigatório'
+      });
+    }
+
+    if (data.amount <= 0) {
+      throw new BadRequestException({
+        code: 'CASH_MOVEMENT_INVALID_AMOUNT',
+        message: 'amount deve ser maior que zero'
+      });
+    }
+
+    const occurredAt = data.occurredAt ? new Date(data.occurredAt) : new Date();
+
+    const cashMovement = await this.database.cashMovement.create({
+      data: {
+        storeId: data.storeId,
+        userId: user.id,
+        type: data.type,
+        source: CashMovementSource.MANUAL,
+        amount: new Prisma.Decimal(data.amount),
+        occurredAt,
+        description,
+        document: data.document?.trim() || null,
+        notes: data.notes?.trim() || null
+      },
+      include: cashMovementInclude
+    });
+
+    return this.formatCashMovement(cashMovement);
   }
 
   async findAll(params: FindAllCashMovementsParams) {
