@@ -73,4 +73,30 @@ export class ListAccountsPayableQueryDto extends ListQueryDto {
     }
   )
   dueDateTo?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtra contas pagas a partir desta data de baixa',
+    example: '2030-03-01T00:00:00.000Z'
+  })
+  @IsOptional()
+  @IsDateString(
+    {},
+    {
+      message: 'paidAtFrom deve ser uma data ISO válida'
+    }
+  )
+  paidAtFrom?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtra contas pagas até esta data de baixa',
+    example: '2030-03-31T23:59:59.999Z'
+  })
+  @IsOptional()
+  @IsDateString(
+    {},
+    {
+      message: 'paidAtTo deve ser uma data ISO válida'
+    }
+  )
+  paidAtTo?: string;
 }

@@ -52,6 +52,8 @@ export class AccountsPayableController {
       search: query.search,
       dueDateFrom: query.dueDateFrom,
       dueDateTo: query.dueDateTo,
+      paidAtFrom: query.paidAtFrom,
+      paidAtTo: query.paidAtTo,
       pagination,
       user
     });
@@ -65,7 +67,9 @@ export class AccountsPayableController {
         status: query.status ?? null,
         search: query.search ?? null,
         dueDateFrom: query.dueDateFrom ?? null,
-        dueDateTo: query.dueDateTo ?? null
+        dueDateTo: query.dueDateTo ?? null,
+        paidAtFrom: query.paidAtFrom ?? null,
+        paidAtTo: query.paidAtTo ?? null
       })
     );
   }

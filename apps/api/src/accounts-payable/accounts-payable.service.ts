@@ -68,6 +68,8 @@ type FindAllAccountsPayableParams = {
   search?: string;
   dueDateFrom?: string;
   dueDateTo?: string;
+  paidAtFrom?: string;
+  paidAtTo?: string;
   pagination: ParsedPagination;
   user: AuthenticatedUser;
 };
@@ -98,18 +100,23 @@ export class AccountsPayableService {
     }
   }
 
-  private ensureValidDueDateRange(dueDateFrom?: string, dueDateTo?: string) {
-    if (!dueDateFrom || !dueDateTo) {
+  private ensureValidDateRange(
+    fromValue: string | undefined,
+    toValue: string | undefined,
+    code: string,
+    message: string
+  ) {
+    if (!fromValue || !toValue) {
       return;
     }
 
-    const from = new Date(dueDateFrom);
-    const to = new Date(dueDateTo);
+    const from = new Date(fromValue);
+    const to = new Date(toValue);
 
     if (from.getTime() > to.getTime()) {
       throw new BadRequestException({
-        code: 'ACCOUNT_PAYABLE_INVALID_DUE_DATE_RANGE',
-        message: 'dueDateFrom não pode ser maior que dueDateTo'
+        code,
+        message
       });
     }
   }
@@ -138,7 +145,21 @@ export class AccountsPayableService {
       ? new Prisma.Decimal(accountAmount)
       : new Prisma.Decimal(paidAmount);
 
-    if (!resolvedPaidAmount.equals(accountAmount)) {
+    if (resolvedPaidAmount.lte(0)) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_PAYABLE_INVALID_PAID_AMOUNT',
+        message: 'paidAmount deve ser maior que zero'
+      });
+    }
+
+    if (resolvedPaidAmount.gt(accountAmount)) {
+      throw new BadRequestException({
+        code: 'ACCOUNT_PAYABLE_PAYMENT_AMOUNT_EXCEEDS_AMOUNT',
+        message: 'paidAmount não pode ser maior que o valor da conta a pagar'
+      });
+    }
+
+    if (resolvedPaidAmount.lt(accountAmount)) {
       throw new BadRequestException({
         code: 'ACCOUNT_PAYABLE_PARTIAL_PAYMENT_NOT_SUPPORTED',
         message: 'Nesta fase, apenas baixa total da conta a pagar é permitida'
@@ -199,7 +220,18 @@ export class AccountsPayableService {
       this.ensureUserCanReadStore(params.user, params.storeId);
     }
 
-    this.ensureValidDueDateRange(params.dueDateFrom, params.dueDateTo);
+    this.ensureValidDateRange(
+      params.dueDateFrom,
+      params.dueDateTo,
+      'ACCOUNT_PAYABLE_INVALID_DUE_DATE_RANGE',
+      'dueDateFrom não pode ser maior que dueDateTo'
+    );
+    this.ensureValidDateRange(
+      params.paidAtFrom,
+      params.paidAtTo,
+      'ACCOUNT_PAYABLE_INVALID_PAID_AT_RANGE',
+      'paidAtFrom não pode ser maior que paidAtTo'
+    );
 
     const search = params.search?.trim();
 
@@ -217,6 +249,14 @@ export class AccountsPayableService {
             dueDate: {
               ...(params.dueDateFrom ? { gte: new Date(params.dueDateFrom) } : {}),
               ...(params.dueDateTo ? { lte: new Date(params.dueDateTo) } : {})
+            }
+          }
+        : {}),
+      ...(params.paidAtFrom || params.paidAtTo
+        ? {
+            paidAt: {
+              ...(params.paidAtFrom ? { gte: new Date(params.paidAtFrom) } : {}),
+              ...(params.paidAtTo ? { lte: new Date(params.paidAtTo) } : {})
             }
           }
         : {}),
@@ -350,8 +390,8 @@ export class AccountsPayableService {
           paidAt,
           paidByUserId: user.id,
           paidAmount,
-          paymentMethod: input.paymentMethod,
-          paymentNotes: input.paymentNotes
+          paymentMethod: input.paymentMethod.trim(),
+          paymentNotes: input.paymentNotes?.trim()
         }
       });
 

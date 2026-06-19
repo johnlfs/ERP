@@ -247,6 +247,7 @@ json_request GET "/api/v1/auth/me" "200" "" >/dev/null
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&status=INVALID" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&storeId=abc" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&dueDateFrom=2030-02-01T00:00:00.000Z&dueDateTo=2030-01-01T00:00:00.000Z" "400" "" >/dev/null
+json_request GET "/api/v1/accounts-payable?page=1&pageSize=10&paidAtFrom=2030-04-01T00:00:00.000Z&paidAtTo=2030-03-01T00:00:00.000Z" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-payable/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
 
 PAY_ACCOUNT_PAYABLE_NOT_FOUND_PAYLOAD="$(cat <<JSON
@@ -266,6 +267,15 @@ JSON
 )"
 
 json_request PATCH "/api/v1/accounts-payable/00000000-0000-0000-0000-000000009999/pay" "400" "$PAY_ACCOUNT_PAYABLE_INVALID_PAYLOAD" >/dev/null
+
+PAY_ACCOUNT_PAYABLE_INVALID_METHOD_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "CHEQUE"
+}
+JSON
+)"
+
+json_request PATCH "/api/v1/accounts-payable/00000000-0000-0000-0000-000000009999/pay" "400" "$PAY_ACCOUNT_PAYABLE_INVALID_METHOD_PAYLOAD" >/dev/null
 
 SMOKE_SUFFIX="$(date +%s)"
 
@@ -1227,7 +1237,50 @@ PAY_ACCOUNT_PAYABLE_PARTIAL_PAYLOAD="$(cat <<JSON
 JSON
 )"
 
+PAY_ACCOUNT_PAYABLE_ZERO_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "PIX",
+  "paidAmount": 0,
+  "paidAt": "2030-03-02T12:00:00.000Z",
+  "paymentNotes": "Tentativa de baixa zerada pelo smoke test"
+}
+JSON
+)"
+
+PAY_ACCOUNT_PAYABLE_NEGATIVE_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "PIX",
+  "paidAmount": -1,
+  "paidAt": "2030-03-02T12:00:00.000Z",
+  "paymentNotes": "Tentativa de baixa negativa pelo smoke test"
+}
+JSON
+)"
+
+PAY_ACCOUNT_PAYABLE_GREATER_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "PIX",
+  "paidAmount": 999999,
+  "paidAt": "2030-03-02T12:00:00.000Z",
+  "paymentNotes": "Tentativa de baixa acima do valor pelo smoke test"
+}
+JSON
+)"
+
+PAY_ACCOUNT_PAYABLE_INVALID_EXISTING_METHOD_PAYLOAD="$(cat <<JSON
+{
+  "paymentMethod": "CHEQUE",
+  "paidAt": "2030-03-02T12:00:00.000Z",
+  "paymentNotes": "Tentativa com método inválido pelo smoke test"
+}
+JSON
+)"
+
 json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_PARTIAL_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_ZERO_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_NEGATIVE_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_GREATER_PAYLOAD" >/dev/null
+json_request PATCH "/api/v1/accounts-payable/${PAID_ACCOUNT_PAYABLE_ID}/pay" "400" "$PAY_ACCOUNT_PAYABLE_INVALID_EXISTING_METHOD_PAYLOAD" >/dev/null
 
 PAY_ACCOUNT_PAYABLE_PAYLOAD="$(cat <<JSON
 {
@@ -1243,9 +1296,11 @@ PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE="$(json_request GET "/api/v1/accounts-payabl
 PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE="$(json_request GET "/api/v1/accounts-payable?status=PAID&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE="$(json_request GET "/api/v1/accounts-payable?status=OPEN&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE="$(json_request GET "/api/v1/accounts-payable?search=PIX&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE="$(json_request GET "/api/v1/accounts-payable?paidAtFrom=2030-03-02T00:00:00.000Z&paidAtTo=2030-03-03T00:00:00.000Z&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
+PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE="$(json_request GET "/api/v1/accounts-payable?paidAtFrom=2030-03-03T00:00:00.000Z&paidAtTo=2030-03-04T00:00:00.000Z&purchaseId=${PAID_PURCHASE_ID}&page=1&pageSize=10" "200" "" )"
 PAID_PURCHASE_AFTER_PAY_RESPONSE="$(json_request GET "/api/v1/purchases/${PAID_PURCHASE_ID}" "200" "" )"
 
-PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" PAID_ACCOUNT_PAYABLE_RESPONSE="$PAID_ACCOUNT_PAYABLE_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE" PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE="$PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE" PAID_PURCHASE_AFTER_PAY_RESPONSE="$PAID_PURCHASE_AFTER_PAY_RESPONSE" PAID_PURCHASE_ID="$PAID_PURCHASE_ID" PAID_ACCOUNT_PAYABLE_ID="$PAID_ACCOUNT_PAYABLE_ID" SUPPLIER_ID="$SUPPLIER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+PAID_PURCHASE_RESPONSE="$PAID_PURCHASE_RESPONSE" PAID_ACCOUNT_PAYABLE_RESPONSE="$PAID_ACCOUNT_PAYABLE_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE" PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE="$PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE" PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE="$PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE" PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE="$PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE" PAID_PURCHASE_AFTER_PAY_RESPONSE="$PAID_PURCHASE_AFTER_PAY_RESPONSE" PAID_PURCHASE_ID="$PAID_PURCHASE_ID" PAID_ACCOUNT_PAYABLE_ID="$PAID_ACCOUNT_PAYABLE_ID" SUPPLIER_ID="$SUPPLIER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 from decimal import Decimal
@@ -1256,6 +1311,8 @@ paid_by_id = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_ID_RESPONSE"])["data
 paid_by_status = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_STATUS_RESPONSE"])["data"]
 open_after_pay = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_OPEN_AFTER_PAY_RESPONSE"])["data"]
 method_search = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_METHOD_SEARCH_RESPONSE"])["data"]
+paid_at_range = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_BY_PAID_AT_RESPONSE"])["data"]
+outside_paid_at_range = json.loads(os.environ["PAID_ACCOUNT_PAYABLE_OUTSIDE_PAID_AT_RESPONSE"])["data"]
 paid_purchase_after_pay = json.loads(os.environ["PAID_PURCHASE_AFTER_PAY_RESPONSE"])["data"]
 
 paid_purchase_id = os.environ["PAID_PURCHASE_ID"]
@@ -1293,6 +1350,13 @@ assert len(open_after_pay) == 0, f"Filtro status=OPEN após baixa deveria retorn
 
 assert any(account["id"] == paid_account_payable_id for account in method_search), (
     "Busca por paymentMethod deveria encontrar a conta paga"
+)
+
+assert len(paid_at_range) == 1, f"Filtro por paidAt deveria retornar 1 registro, veio {len(paid_at_range)}"
+assert paid_at_range[0]["id"] == paid_account_payable_id, "Filtro por paidAt retornou conta incorreta"
+assert paid_at_range[0]["paidAt"].startswith("2030-03-02"), "Filtro por paidAt retornou baixa fora do período"
+assert len(outside_paid_at_range) == 0, (
+    f"Filtro paidAt fora do período deveria retornar 0, veio {len(outside_paid_at_range)}"
 )
 
 paid_purchase_payable = paid_purchase_after_pay["accountPayable"]

@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsDateString,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -10,10 +11,21 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+export const ACCOUNT_PAYABLE_PAYMENT_METHODS = [
+  'PIX',
+  'DINHEIRO',
+  'CARTAO_DEBITO',
+  'CARTAO_CREDITO',
+  'BOLETO',
+  'TRANSFERENCIA',
+  'OUTRO'
+] as const;
+
 export class PayAccountPayableDto {
   @ApiProperty({
     description: 'Forma de pagamento usada na baixa',
     example: 'PIX',
+    enum: ACCOUNT_PAYABLE_PAYMENT_METHODS,
     maxLength: 40
   })
   @IsString({
@@ -21,6 +33,10 @@ export class PayAccountPayableDto {
   })
   @IsNotEmpty({
     message: 'paymentMethod não pode ser vazio'
+  })
+  @IsIn(ACCOUNT_PAYABLE_PAYMENT_METHODS, {
+    message:
+      'paymentMethod deve ser PIX, DINHEIRO, CARTAO_DEBITO, CARTAO_CREDITO, BOLETO, TRANSFERENCIA ou OUTRO'
   })
   @MaxLength(40, {
     message: 'paymentMethod deve ter no máximo 40 caracteres'
