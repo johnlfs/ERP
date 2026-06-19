@@ -253,6 +253,10 @@ json_request GET "/api/v1/accounts-payable/00000000-0000-0000-0000-000000009999"
 
 json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&status=INVALID" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&storeId=abc" "400" "" >/dev/null
+json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&customerId=abc" "400" "" >/dev/null
+json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&saleId=abc" "400" "" >/dev/null
+json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&dueDateFrom=not-a-date" "400" "" >/dev/null
+json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&receivedAtFrom=not-a-date" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&dueDateFrom=2030-02-01T00:00:00.000Z&dueDateTo=2030-01-01T00:00:00.000Z" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-receivable?page=1&pageSize=10&receivedAtFrom=2030-04-01T00:00:00.000Z&receivedAtTo=2030-03-01T00:00:00.000Z" "400" "" >/dev/null
 json_request GET "/api/v1/accounts-receivable/00000000-0000-0000-0000-000000009999" "404" "" >/dev/null
@@ -741,11 +745,14 @@ ACCOUNT_RECEIVABLE_BY_ID_RESPONSE="$(json_request GET "/api/v1/accounts-receivab
 ACCOUNTS_RECEIVABLE_BY_SALE_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
 ACCOUNTS_RECEIVABLE_BY_STATUS_OPEN_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?status=OPEN&saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
 ACCOUNTS_RECEIVABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?status=CANCELED&saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNTS_RECEIVABLE_BY_STATUS_RECEIVED_BEFORE_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?status=RECEIVED&saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
 ACCOUNTS_RECEIVABLE_BY_CUSTOMER_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?customerId=${CUSTOMER_ID}&search=SMOKE-SALE&page=1&pageSize=10" "200" "" )"
 ACCOUNTS_RECEIVABLE_BY_STORE_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?storeId=${STORE_ID}&search=SMOKE-SALE&page=1&pageSize=10" "200" "" )"
 ACCOUNTS_RECEIVABLE_BY_DUE_DATE_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?dueDateFrom=2030-04-01T00:00:00.000Z&dueDateTo=2030-04-02T00:00:00.000Z&search=SMOKE-SALE&page=1&pageSize=10" "200" "" )"
+ACCOUNTS_RECEIVABLE_BY_DUE_DATE_EMPTY_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?dueDateFrom=2030-04-03T00:00:00.000Z&dueDateTo=2030-04-04T00:00:00.000Z&saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNTS_RECEIVABLE_BY_UNKNOWN_CUSTOMER_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?customerId=00000000-0000-0000-0000-000000009999&saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
 
-SALE_RESPONSE="$SALE_RESPONSE" ACCOUNTS_RECEIVABLE_SEARCH_RESPONSE="$ACCOUNTS_RECEIVABLE_SEARCH_RESPONSE" ACCOUNT_RECEIVABLE_BY_ID_RESPONSE="$ACCOUNT_RECEIVABLE_BY_ID_RESPONSE" ACCOUNTS_RECEIVABLE_BY_SALE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_SALE_RESPONSE" ACCOUNTS_RECEIVABLE_BY_STATUS_OPEN_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_STATUS_OPEN_RESPONSE" ACCOUNTS_RECEIVABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE" ACCOUNTS_RECEIVABLE_BY_CUSTOMER_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_CUSTOMER_RESPONSE" ACCOUNTS_RECEIVABLE_BY_STORE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_STORE_RESPONSE" ACCOUNTS_RECEIVABLE_BY_DUE_DATE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_DUE_DATE_RESPONSE" ACCOUNT_RECEIVABLE_ID="$ACCOUNT_RECEIVABLE_ID" SALE_ID="$SALE_ID" CUSTOMER_ID="$CUSTOMER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+SALE_RESPONSE="$SALE_RESPONSE" ACCOUNTS_RECEIVABLE_SEARCH_RESPONSE="$ACCOUNTS_RECEIVABLE_SEARCH_RESPONSE" ACCOUNT_RECEIVABLE_BY_ID_RESPONSE="$ACCOUNT_RECEIVABLE_BY_ID_RESPONSE" ACCOUNTS_RECEIVABLE_BY_SALE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_SALE_RESPONSE" ACCOUNTS_RECEIVABLE_BY_STATUS_OPEN_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_STATUS_OPEN_RESPONSE" ACCOUNTS_RECEIVABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE" ACCOUNTS_RECEIVABLE_BY_STATUS_RECEIVED_BEFORE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_STATUS_RECEIVED_BEFORE_RESPONSE" ACCOUNTS_RECEIVABLE_BY_CUSTOMER_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_CUSTOMER_RESPONSE" ACCOUNTS_RECEIVABLE_BY_STORE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_STORE_RESPONSE" ACCOUNTS_RECEIVABLE_BY_DUE_DATE_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_DUE_DATE_RESPONSE" ACCOUNTS_RECEIVABLE_BY_DUE_DATE_EMPTY_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_DUE_DATE_EMPTY_RESPONSE" ACCOUNTS_RECEIVABLE_BY_UNKNOWN_CUSTOMER_RESPONSE="$ACCOUNTS_RECEIVABLE_BY_UNKNOWN_CUSTOMER_RESPONSE" ACCOUNT_RECEIVABLE_ID="$ACCOUNT_RECEIVABLE_ID" SALE_ID="$SALE_ID" CUSTOMER_ID="$CUSTOMER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 from decimal import Decimal
@@ -756,9 +763,12 @@ by_id = json.loads(os.environ["ACCOUNT_RECEIVABLE_BY_ID_RESPONSE"])["data"]
 by_sale = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_SALE_RESPONSE"])["data"]
 by_status_open = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_STATUS_OPEN_RESPONSE"])["data"]
 by_status_canceled_before = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_STATUS_CANCELED_BEFORE_RESPONSE"])["data"]
+by_status_received_before = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_STATUS_RECEIVED_BEFORE_RESPONSE"])["data"]
 by_customer = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_CUSTOMER_RESPONSE"])["data"]
 by_store = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_STORE_RESPONSE"])["data"]
 by_due_date = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_DUE_DATE_RESPONSE"])["data"]
+by_due_date_empty = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_DUE_DATE_EMPTY_RESPONSE"])["data"]
+by_unknown_customer = json.loads(os.environ["ACCOUNTS_RECEIVABLE_BY_UNKNOWN_CUSTOMER_RESPONSE"])["data"]
 account_receivable_id = os.environ["ACCOUNT_RECEIVABLE_ID"]
 sale_id = os.environ["SALE_ID"]
 customer_id = os.environ["CUSTOMER_ID"]
@@ -779,9 +789,29 @@ assert any(item["id"] == account_receivable_id for item in search_data), "Busca 
 assert len(by_sale) == 1 and by_sale[0]["id"] == account_receivable_id, "Filtro saleId não retornou a conta correta"
 assert len(by_status_open) == 1 and by_status_open[0]["id"] == account_receivable_id, "Filtro OPEN não retornou a conta correta"
 assert len(by_status_canceled_before) == 0, "Filtro CANCELED antes do cancelamento deveria retornar 0"
+assert len(by_status_received_before) == 0, "Filtro RECEIVED antes do recebimento deveria retornar 0"
 assert any(item["id"] == account_receivable_id for item in by_customer), "Filtro customerId não encontrou a conta"
 assert any(item["id"] == account_receivable_id for item in by_store), "Filtro storeId não encontrou a conta"
 assert any(item["id"] == account_receivable_id for item in by_due_date), "Filtro dueDate não encontrou a conta"
+assert len(by_due_date_empty) == 0, f"Filtro dueDate fora do vencimento deveria retornar 0, veio {len(by_due_date_empty)}"
+assert len(by_unknown_customer) == 0, f"Filtro com customerId desconhecido deveria retornar 0, veio {len(by_unknown_customer)}"
+PYVALIDATION
+
+SALE_BY_ID_RESPONSE="$(json_request GET "/api/v1/sales/${SALE_ID}" "200" "" )"
+
+SALE_BY_ID_RESPONSE="$SALE_BY_ID_RESPONSE" ACCOUNT_RECEIVABLE_ID="$ACCOUNT_RECEIVABLE_ID" SALE_ID="$SALE_ID" CUSTOMER_ID="$CUSTOMER_ID" STORE_ID="$STORE_ID" python3 - <<'PYVALIDATION'
+import json
+import os
+
+sale = json.loads(os.environ["SALE_BY_ID_RESPONSE"])["data"]
+account_receivable = sale.get("accountReceivable")
+assert account_receivable is not None, "GET /sales/:id deveria retornar accountReceivable"
+assert account_receivable["id"] == os.environ["ACCOUNT_RECEIVABLE_ID"], "accountReceivable da venda veio com id incorreto"
+assert account_receivable["saleId"] == os.environ["SALE_ID"], "accountReceivable da venda veio com saleId incorreto"
+assert account_receivable["customerId"] == os.environ["CUSTOMER_ID"], "accountReceivable da venda veio com customerId incorreto"
+assert account_receivable["storeId"] == os.environ["STORE_ID"], "accountReceivable da venda veio com storeId incorreto"
+assert account_receivable["status"] == "OPEN", "accountReceivable da venda deveria estar OPEN antes do cancelamento"
+assert account_receivable["receivedAt"] is None, "accountReceivable da venda não deveria ter receivedAt antes do recebimento"
 PYVALIDATION
 
 PRODUCT_AFTER_SALE_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}" "200" "" )"
@@ -789,7 +819,6 @@ PRODUCT_AFTER_SALE_RESPONSE="$(json_request GET "/api/v1/products/${PRODUCT_ID}"
 printf '%s' "$PRODUCT_AFTER_SALE_RESPONSE" | python3 -c 'import sys,json; payload=json.load(sys.stdin); current=float(payload["data"]["currentStock"]); assert current == 12.0, f"Estoque final esperado após venda era 12, veio {current}"'
 
 json_request GET "/api/v1/sales?page=1&pageSize=10" "200" "" >/dev/null
-json_request GET "/api/v1/sales/${SALE_ID}" "200" "" >/dev/null
 
 CANCEL_SALE_PAYLOAD="$(cat <<JSON
 {
@@ -829,8 +858,9 @@ PYVALIDATION
 ACCOUNT_RECEIVABLE_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
 ACCOUNT_RECEIVABLE_STATUS_CANCELED_AFTER_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?status=CANCELED&saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
 ACCOUNT_RECEIVABLE_STATUS_OPEN_AFTER_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?status=OPEN&saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
+ACCOUNT_RECEIVABLE_STATUS_RECEIVED_AFTER_RESPONSE="$(json_request GET "/api/v1/accounts-receivable?status=RECEIVED&saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
 
-ACCOUNT_RECEIVABLE_AFTER_CANCEL_RESPONSE="$ACCOUNT_RECEIVABLE_AFTER_CANCEL_RESPONSE" ACCOUNT_RECEIVABLE_STATUS_CANCELED_AFTER_RESPONSE="$ACCOUNT_RECEIVABLE_STATUS_CANCELED_AFTER_RESPONSE" ACCOUNT_RECEIVABLE_STATUS_OPEN_AFTER_RESPONSE="$ACCOUNT_RECEIVABLE_STATUS_OPEN_AFTER_RESPONSE" ACCOUNT_RECEIVABLE_ID="$ACCOUNT_RECEIVABLE_ID" python3 - <<'PYVALIDATION'
+ACCOUNT_RECEIVABLE_AFTER_CANCEL_RESPONSE="$ACCOUNT_RECEIVABLE_AFTER_CANCEL_RESPONSE" ACCOUNT_RECEIVABLE_STATUS_CANCELED_AFTER_RESPONSE="$ACCOUNT_RECEIVABLE_STATUS_CANCELED_AFTER_RESPONSE" ACCOUNT_RECEIVABLE_STATUS_OPEN_AFTER_RESPONSE="$ACCOUNT_RECEIVABLE_STATUS_OPEN_AFTER_RESPONSE" ACCOUNT_RECEIVABLE_STATUS_RECEIVED_AFTER_RESPONSE="$ACCOUNT_RECEIVABLE_STATUS_RECEIVED_AFTER_RESPONSE" ACCOUNT_RECEIVABLE_ID="$ACCOUNT_RECEIVABLE_ID" python3 - <<'PYVALIDATION'
 import json
 import os
 
@@ -838,6 +868,7 @@ account_receivable_id = os.environ["ACCOUNT_RECEIVABLE_ID"]
 after_cancel = json.loads(os.environ["ACCOUNT_RECEIVABLE_AFTER_CANCEL_RESPONSE"])["data"]
 status_canceled = json.loads(os.environ["ACCOUNT_RECEIVABLE_STATUS_CANCELED_AFTER_RESPONSE"])["data"]
 status_open = json.loads(os.environ["ACCOUNT_RECEIVABLE_STATUS_OPEN_AFTER_RESPONSE"])["data"]
+status_received = json.loads(os.environ["ACCOUNT_RECEIVABLE_STATUS_RECEIVED_AFTER_RESPONSE"])["data"]
 
 assert len(after_cancel) == 1, f"Filtro saleId após cancelamento deveria retornar 1 conta, veio {len(after_cancel)}"
 assert after_cancel[0]["id"] == account_receivable_id, "Conta a receber após cancelamento veio com id incorreto"
@@ -850,6 +881,7 @@ assert after_cancel[0]["cancellationReason"] == "Cancelamento pelo smoke test", 
 assert len(status_canceled) == 1, f"Filtro status=CANCELED após cancelamento deveria retornar 1, veio {len(status_canceled)}"
 assert status_canceled[0]["id"] == account_receivable_id, "Filtro CANCELED retornou conta incorreta"
 assert len(status_open) == 0, f"Filtro status=OPEN após cancelamento deveria retornar 0, veio {len(status_open)}"
+assert len(status_received) == 0, f"Filtro status=RECEIVED após cancelamento deveria retornar 0, veio {len(status_received)}"
 PYVALIDATION
 
 SALE_MOVEMENTS_AFTER_CANCEL_RESPONSE="$(json_request GET "/api/v1/stock-movements?saleId=${SALE_ID}&page=1&pageSize=10" "200" "" )"
